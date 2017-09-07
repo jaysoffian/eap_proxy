@@ -66,49 +66,19 @@ from functools import partial
 
 ### Constants
 
-ETH_P_PAE = 0x888e  # 802.1x
+CHECK_VLAN_IF_TTL = 75
+EAP_MULTICAST_ADDR = (0x01, 0x80, 0xc2, 0x00, 0x00, 0x03)
+ETH_P_PAE = 0x888e  # IEEE 802.1X (Port Access Entity)
 IFF_PROMISC = 0x100
 PACKET_ADD_MEMBERSHIP = 1
 PACKET_MR_MULTICAST = 0
-CHECK_VLAN_IF_TTL = 75
+PACKET_MR_PROMISC = 1
 SIOCGIFADDR = 0x8915
 SIOCGIFFLAGS = 0x8913
 SIOCSIFFLAGS = 0x8914
 SOL_PACKET = 263
 
-### Sockets
-
-class struct_sockaddr(ctypes.Structure):
-    # pylint:disable=too-few-public-methods
-    _fields_ = (
-        ("sa_family", ctypes.c_ushort),
-        ("sa_data", ctypes.c_ubyte * 14))
-
-
-class struct_sockaddr_in(ctypes.Structure):
-    # pylint:disable=too-few-public-methods
-    _fields_ = (
-        ("sin_family", ctypes.c_ushort),
-        ("sin_port", ctypes.c_ushort),
-        ("sin_addr", ctypes.c_uint32),
-        ("sin_zero", ctypes.c_char * 8))
-
-
-class union_ifr_ifru(ctypes.Union):
-    # pylint:disable=too-few-public-methods
-    _fields_ = (
-        ("ifr_addr", struct_sockaddr_in),
-        ("ifr_hwaddr", struct_sockaddr),
-        ("ifr_flags", ctypes.c_short))
-
-
-class struct_ifreq(ctypes.Structure):
-    # pylint:disable=too-few-public-methods
-    _anonymous_ = ("ifr_ifru",)
-    _fields_ = (
-        ("ifr_name", ctypes.c_char * 16),
-        ("ifr_ifru", union_ifr_ifru))
-
+### Sockets / Network Interfaces
 
 class struct_packet_mreq(ctypes.Structure):
     # pylint:disable=too-few-public-methods
@@ -119,61 +89,67 @@ class struct_packet_mreq(ctypes.Structure):
         ("mr_address", ctypes.c_ubyte * 8))
 
 
-def enable_multicast(sock):
-    # pylint:disable=attribute-defined-outside-init
-    mreq = struct_packet_mreq()
-    mreq.mr_ifindex = if_nametoindex(if_name(sock))
-    mreq.mr_type = PACKET_MR_MULTICAST
-    mreq.mr_alen = 6
-    mreq.mr_address = (0x01, 0x80, 0xc2, 0x00, 0x00, 0x03)
-    sock.setsockopt(SOL_PACKET, PACKET_ADD_MEMBERSHIP, mreq)
-    return sock
-
-
-def enable_promisc(sock):
-    # pylint:disable=attribute-defined-outside-init
-    ifreq = struct_ifreq()
-    ifreq.ifr_name = if_name(sock)
-    ioctl(sock, SIOCGIFFLAGS, ifreq)
-    ifreq.ifr_flags |= IFF_PROMISC  # pylint:disable=no-member
-    ioctl(sock, SIOCSIFFLAGS, ifreq)
-    return sock
-
-
 if_nametoindex = ctypes.CDLL(ctypes.util.find_library('c')).if_nametoindex
 
 
-def if_name(sock):
-    return sock.getsockname()[0]
-
-
-def if_addr(name):
-    """Return IP of `name` interface or None if unassigned or error."""
+def addsockaddr(sock, address):
+    """Configure physical-layer multicasting or promiscuous mode for `sock`.
+       If `addr` is None, promiscuous mode is configured. Otherwise `addr`
+       should be a tuple of up to 8 bytes to configure that multicast address.
+    """
     # pylint:disable=attribute-defined-outside-init
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_IP)
-    ifreq = struct_ifreq()
-    ifreq.ifr_name = name
-    try:
-        ioctl(sock, SIOCGIFADDR, ifreq)
-    except IOError:
-        return None
-    return socket.inet_ntoa(struct.pack("!I", ifreq.ifr_addr.sin_addr))
+    mreq = struct_packet_mreq()
+    mreq.mr_ifindex = if_nametoindex(getifname(sock))
+    if address is None:
+        mreq.mr_type = PACKET_MR_PROMISC
+    else:
+        mreq.mr_type = PACKET_MR_MULTICAST
+        mreq.mr_alen = len(address)
+        mreq.mr_address = address
+    sock.setsockopt(SOL_PACKET, PACKET_ADD_MEMBERSHIP, mreq)
 
 
-def if_open(name, poll=None, promisc=False):
+def rawsocket(ifname, poll=None, promisc=False):
+    """Return raw socket listening for 802.1X packets on `ifname` interface.
+       The socket is configured for multicast mode on EAP_MULTICAST_ADDR.
+       Specify `promisc` to enable promiscuous mode instead.
+       Provide `poll` object to register socket to it POLLIN events.
+    """
     s = socket.socket(
         socket.PF_PACKET,  # pylint:disable=no-member
         socket.SOCK_RAW,
         socket.htons(ETH_P_PAE))
-    s.bind((name, 0))
-    if promisc:
-        enable_promisc(s)
-    else:
-        enable_multicast(s)
+    s.bind((ifname, 0))
+    addsockaddr(s, None if promisc else EAP_MULTICAST_ADDR)
     if poll is not None:
         poll.register(s, select.POLLIN)  # pylint:disable=no-member
     return s
 
+
+def getifname(sock):
+    """Return interface name of `sock`"""
+    return sock.getsockname()[0]
+
+
+def getifaddr(ifname):
+    """Return IP addr of `ifname` interface in 1.2.3.4 notation
+       or None if no IP is assigned or other IOError occurs.
+    """
+    # pylint:disable=attribute-defined-outside-init
+    ifreq = "%-32s" % (ifname + "\0")
+    try:
+        result = ioctl(socket.socket(), SIOCGIFADDR, ifreq)
+    except IOError:
+        return None
+    return socket.inet_ntoa(result[20:24])
+
+
+def getifhwaddr(ifname):
+    """Return MAC address for `ifname` as a packed string."""
+    with open("/sys/class/net/%s/address" % ifname) as f:
+        s = f.readline()
+    octets = s.split(':')
+    return ''.join(chr(int(x, 16)) for x in octets)
 
 ### Helpers
 
@@ -191,7 +167,7 @@ def strbuf(buf):
 
 
 def strmac(mac):
-    """Return `mac` formatted like aa:bb:cc:dd:ee:ff."""
+    """Return packed string `mac` formatted like aa:bb:cc:dd:ee:ff."""
     return ':'.join("%02x" % ord(b) for b in mac[:6])
 
 
@@ -203,7 +179,12 @@ def strexc():
         exc_type, exc_value, tb = sys.exc_info()
         if exc_type is None:
             return ''
-        pathname, lineno, func, __ = traceback.extract_tb(tb)[-1]
+        # find last frame in this script
+        pathname, lineno, func = '', 0, ''
+        for frame in traceback.extract_tb(tb):
+            if frame[0] != __file__:
+                break
+            pathname, lineno, func = frame[:3]
         filename = os.path.basename(pathname)
         return "%s (%s:%s) %s: %s" % (
             func, filename, lineno, exc_type.__name__, exc_value)
@@ -232,16 +213,19 @@ def checkpidfile(pidfile):
 
 
 def safe_unlink(path):
+    """rm -f `path`"""
     try:
         os.unlink(path)
     except EnvironmentError:
         pass
 
 
-def writepidfile(pidfile, log=None):
+def writepidfile(pidfile):
+    """Write current pid to `pidfile`."""
     with open(pidfile, 'w') as f:
         f.write("%s\n" % os.getpid())
 
+    # NOTE: called on normal Python exit, but not on SIGTERM.
     @atexit.register
     def removepidfile(_remove=os.remove):  # pylint:disable=unused-variable
         try:
@@ -249,16 +233,9 @@ def writepidfile(pidfile, log=None):
         except Exception:  # pylint:disable=broad-except
             pass
 
-    # atexit doesn't run on SIGTERM, so help it out
-    def on_sigterm(signum, frame):  # pylint:disable=unused-argument
-        if log is not None:
-            log.info("exiting on signal %d", signum)
-        raise SystemExit(1)
-
-    signal.signal(signal.SIGTERM, on_sigterm)
-
 
 def daemonize():
+    """Convert process into a daemon."""
     if os.fork():
         sys.exit(0)
     os.chdir("/")
@@ -277,6 +254,7 @@ def daemonize():
 
 
 def make_logger(use_syslog=False):
+    """Return new logging.Logger object."""
     if use_syslog:
         formatter = logging.Formatter("eap_proxy[%(process)d]: %(message)s")
         formatter.formatException = lambda *__: ''  # no stack trace to syslog
@@ -293,15 +271,24 @@ def make_logger(use_syslog=False):
     logger.addHandler(handler)
     return logger
 
-
-def dhclient_pathnames(name):
-    filename = name.replace('.', '_')
-    return (
-        "/var/run/dhclient_%s.conf" % filename,
-        "/var/run/dhclient_%s.pid" % filename,
-        "/var/run/dhclient_%s.leases" % filename)
-
 ### EdgeOS
+
+def getdefaultroute():
+    """Return (ifname, ipaddr) of default route or (None, None)"""
+    search = re.compile(r"^(\S+)\s+00000000\s+([0-9a-fA-F]{8})").search
+    m = None
+    with open("/proc/net/route") as f:
+        for line in f:
+            m = search(line)
+            if m:
+                break
+    if not m:
+        return None, None
+    ifname, hexaddr = m.groups()
+    octets = (hexaddr[i:i + 2] for i in xrange(0, 7, 2))
+    ipaddr = '.'.join(str(int(octet, 16)) for octet in octets)
+    return ifname, ipaddr
+
 
 class EdgeOS(object):
     def __init__(self, log):
@@ -328,18 +315,31 @@ class EdgeOS(object):
         self.stop_dhclient(name)
         self.start_dhclient(name)
 
-    def stop_dhclient(self, name):
-        cf, pf, lf = dhclient_pathnames(name)
+    @staticmethod
+    def dhclient_pathnames(ifname):
+        """Return tuple of (-cf, -pf, and -lf) arg values for dhclient."""
+        filename = ifname.replace('.', '_')
+        return (
+            "/var/run/dhclient_%s.conf" % filename,    # -cf
+            "/var/run/dhclient_%s.pid" % filename,     # -pf
+            "/var/run/dhclient_%s.leases" % filename)  # -lf
+
+    def stop_dhclient(self, ifname):
+        """Stop dhclient on `ifname` interface."""
+        # Emulates vyatta-interfaces.pl's behavior
+        cf, pf, lf = self.dhclient_pathnames(ifname)
         self.run(
             "/sbin/dhclient", "-q",
             "-cf", cf,
             "-pf", pf,
             "-lf", lf,
-            "-r", name)
+            "-r", ifname)
         safe_unlink(pf)
 
-    def start_dhclient(self, name):
-        cf, pf, lf = dhclient_pathnames(name)
+    def start_dhclient(self, ifname):
+        """Start dhclient on `ifname` interface"""
+        # Emulates vyatta-interfaces.pl's behavior
+        cf, pf, lf = self.dhclient_pathnames(ifname)
         killpidfile(pf, signal.SIGTERM)
         safe_unlink(pf)
         self.run(
@@ -347,37 +347,31 @@ class EdgeOS(object):
             "-cf", cf,
             "-pf", pf,
             "-lf", lf,
-            name)
+            ifname)
 
-    def setmac(self, name, mac):
-        """Set interface `name` mac to `mac`"""
+    def setmac(self, ifname, mac):
+        """Set interface `ifname` mac to `mac`, which may be either a packed
+           string or in "aa:bb:cc:dd:ee:ff" format."""
+        # untested, perhaps I should use /bin/ip or ioctl instead.
         if len(mac) == 6:
             mac = strmac(mac)
-        self.run_vyatta_interfaces(name, "--set-mac", mac)
+        self.run_vyatta_interfaces(ifname, "--set-mac", mac)
 
-    def getmac(self, name):  # pylint:disable=no-self-use
-        """Return MAC address for `name` as a 6 octet string."""
-        with open("/sys/class/net/%s/address" % name) as f:
-            s = f.readline()
-        octets = s.split(':')
-        return ''.join(chr(int(x, 16)) for x in octets)
+    @staticmethod
+    def getmac(ifname):
+        """Return MAC address for `ifname` as a packed string."""
+        return getifhwaddr(ifname)
 
-    def check_interface(self, name):
-        ip_addr = "1.2.3.4"  # used for finding default route only
-        pattern = r"^%s via ([\d\.]+) dev %s\s" % (
-            re.escape(ip_addr),
-            re.escape(name))
-        search = re.compile(pattern).search
-        rc, output = self.run("ip", "route", "get", ip_addr)
-        via_ip = None
-        for line in output.splitlines():
-            m = search(line)
-            if m:
-                via_ip = m.group(1)
-                break
-        if not via_ip:
+    def check_interface(self, ifname):
+        """Check interface `ifname` has a pingable default route."""
+        via_ifname, via_ipaddr = getdefaultroute()
+        if via_ifname != ifname:
+            if via_ifname:
+                self.warn(
+                    "unexpected default route: %s %s",
+                    via_ipaddr, via_ifname)
             return False
-        rc, output = self.run("ping", "-c", "1", "-w", "1", via_ip)
+        rc, __ = self.run("ping", "-c", "1", "-w", "1", via_ipaddr)
         return True if rc == 0 else False
 
 
@@ -493,8 +487,8 @@ class EAPProxy(object):
     def proxy_loop(self):
         args = self.args
         poll = select.poll()  # pylint:disable=no-member
-        s_rtr = if_open(args.if_rtr, poll=poll, promisc=args.promiscuous)
-        s_wan = if_open(args.if_wan, poll=poll, promisc=args.promiscuous)
+        s_rtr = rawsocket(args.if_rtr, poll=poll, promisc=args.promiscuous)
+        s_wan = rawsocket(args.if_wan, poll=poll, promisc=args.promiscuous)
         socks = {s.fileno(): s for s in (s_rtr, s_wan)}
         on_poll_event = partial(self.on_poll_event, s_rtr=s_rtr, s_wan=s_wan)
 
@@ -503,33 +497,33 @@ class EAPProxy(object):
             for fd, event in ready:
                 on_poll_event(socks[fd], event)
 
-    def on_poll_event(self, sock, event, s_rtr, s_wan):
-        name = if_name(sock)
+    def on_poll_event(self, sock_in, event, s_rtr, s_wan):
+        ifname = getifname(sock_in)
         if event != select.POLLIN:  # pylint:disable=no-member
-            raise IOError("[%s] invalid poll event: %d", name, event)
+            raise IOError("[%s] invalid poll event: %d", ifname, event)
 
-        buf = sock.recv(2048)
+        buf = sock_in.recv(2048)
 
         if self.args.debug_packets:
-            self.log("%s: recv %d bytes:\n%s", name, len(buf), strbuf(buf))
+            self.log("%s: recv %d bytes:\n%s", ifname, len(buf), strbuf(buf))
         else:
-            self.log("%s: recv %d bytes", name, len(buf))
+            self.log("%s: recv %d bytes", ifname, len(buf))
 
         eap = EAPFrame.from_buf(buf)
-        self.log("%s: %s", name, eap)
+        self.log("%s: %s", ifname, eap)
 
-        if sock == s_rtr:
+        if sock_in == s_rtr:
             sock_out = s_wan
             self.on_router_eap(eap)
             if self.should_ignore_router_eap(eap):
-                self.log("%s: ignoring %s", name, eap.type_name)
+                self.log("%s: ignoring %s", ifname, eap.type_name)
                 return
         else:
             sock_out = s_rtr
             self.on_wan_eap(eap)
 
         sent = sock_out.send(buf)
-        self.log("%s: sent %d bytes", if_name(sock_out), sent)
+        self.log("%s: sent %d bytes", getifname(sock_out), sent)
 
 
     def should_ignore_router_eap(self, eap):
@@ -569,11 +563,11 @@ class EAPProxy(object):
         args = self.args
         if args.ignore_wan_has_ip:
             # just check for an ip
-            check_interface = if_addr
+            check_interface = getifaddr
         elif args.ignore_wan_ping_gateway:
             # check for an ip, then try to ping the default gateway
             def check_interface(name):
-                addr = if_addr(name)
+                addr = getifaddr(name)
                 if addr and self.os.check_interface(name):
                     return addr
         else:
@@ -653,6 +647,8 @@ def parse_args():
     args = p.parse_args()
     if args.daemon:
         args.syslog = True
+    if args.syslog and args.debug_packets:
+        p.error("--debug-packets not allowed with --syslog")
     return args
 
 
@@ -667,13 +663,24 @@ def main():
             return 1
 
     if args.daemon:
-        daemonize()
+        try:
+            daemonize()
+        except Exception:  # pylint:disable=broad-except
+            log.exception("could not become daemon: %s", strexc())
+            return 1
+
+    # ensure cleanup (atexit, etc) occurs when we're killed via SIGTERM
+    def on_sigterm(signum, __):
+        log.info("exiting on signal %d", signum)
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, on_sigterm)
 
     if args.pidfile:
         try:
-            writepidfile(args.pidfile, log)
-        except Exception as ex:  # pylint:disable=broad-except
-            log.error("could not write pidfile: %s", ex, exc_info=ex)
+            writepidfile(args.pidfile)
+        except EnvironmentError:  # pylint:disable=broad-except
+            log.exception("could not write pidfile: %s", strexc())
 
     EAPProxy(args, log).proxy_forever()
 
