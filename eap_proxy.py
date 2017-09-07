@@ -132,17 +132,15 @@ def enable_multicast(sock):
 
 def enable_promisc(sock):
     # pylint:disable=attribute-defined-outside-init
-    ifr = struct_ifreq()
-    ifr.ifr_name = if_name(sock)
-    ioctl(sock, SIOCGIFFLAGS, ifr)
-    ifr.ifr_flags |= IFF_PROMISC  # pylint:disable=no-member
-    ioctl(sock, SIOCSIFFLAGS, ifr)
+    ifreq = struct_ifreq()
+    ifreq.ifr_name = if_name(sock)
+    ioctl(sock, SIOCGIFFLAGS, ifreq)
+    ifreq.ifr_flags |= IFF_PROMISC  # pylint:disable=no-member
+    ioctl(sock, SIOCSIFFLAGS, ifreq)
     return sock
 
 
-_libc = ctypes.CDLL(ctypes.util.find_library('c'))
-if_nametoindex = _libc.if_nametoindex
-del _libc
+if_nametoindex = ctypes.CDLL(ctypes.util.find_library('c')).if_nametoindex
 
 
 def if_name(sock):
@@ -153,13 +151,13 @@ def if_addr(name):
     """Return IP of `name` interface or None if unassigned or error."""
     # pylint:disable=attribute-defined-outside-init
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_IP)
-    ifr = struct_ifreq()
-    ifr.ifr_name = name
+    ifreq = struct_ifreq()
+    ifreq.ifr_name = name
     try:
-        ioctl(sock, SIOCGIFADDR, ifr)
+        ioctl(sock, SIOCGIFADDR, ifreq)
     except IOError:
         return None
-    return socket.inet_ntoa(struct.pack("!I", ifr.ifr_addr.sin_addr))
+    return socket.inet_ntoa(struct.pack("!I", ifreq.ifr_addr.sin_addr))
 
 
 def if_open(name, poll=None, promisc=False):
@@ -180,6 +178,7 @@ def if_open(name, poll=None, promisc=False):
 ### Helpers
 
 def strbuf(buf):
+    """Return `buf` formatted as a hex dump (like tcpdump -xx)."""
     out = []
     for i in xrange(0, len(buf), 16):
         octets = (ord(x) for x in buf[i:i + 16])
@@ -279,15 +278,16 @@ def daemonize():
 
 def make_logger(use_syslog=False):
     if use_syslog:
-        SysLogHandler = logging.handlers.SysLogHandler
-        handler = SysLogHandler("/dev/log", facility=SysLogHandler.LOG_LOCAL7)
         formatter = logging.Formatter("eap_proxy[%(process)d]: %(message)s")
         formatter.formatException = lambda *__: ''  # no stack trace to syslog
+        SysLogHandler = logging.handlers.SysLogHandler
+        handler = SysLogHandler("/dev/log", facility=SysLogHandler.LOG_LOCAL7)
         handler.setFormatter(formatter)
     else:
+        formatter = logging.Formatter("[%(asctime)s]: %(message)s")
         handler = logging.StreamHandler()
-        handler.setFormatter(
-            logging.Formatter("[%(asctime)s]: %(message)s"))
+        handler.setFormatter(formatter)
+
     logger = logging.getLogger("eap_proxy")
     logger.setLevel(logging.DEBUG)
     logger.addHandler(handler)
@@ -495,22 +495,18 @@ class EAPProxy(object):
         poll = select.poll()  # pylint:disable=no-member
         s_rtr = if_open(args.if_rtr, poll=poll, promisc=args.promiscuous)
         s_wan = if_open(args.if_wan, poll=poll, promisc=args.promiscuous)
-        fdmap = {s.fileno(): s for s in (s_rtr, s_wan)}
+        socks = {s.fileno(): s for s in (s_rtr, s_wan)}
         on_poll_event = partial(self.on_poll_event, s_rtr=s_rtr, s_wan=s_wan)
 
         while True:
             ready = poll.poll()
             for fd, event in ready:
-                sock = fdmap[fd]
-                on_poll_event(sock, event)
-                if event != select.POLLIN:  # pylint:disable=no-member
-                    return
+                on_poll_event(socks[fd], event)
 
     def on_poll_event(self, sock, event, s_rtr, s_wan):
         name = if_name(sock)
         if event != select.POLLIN:  # pylint:disable=no-member
-            self.warn("%s: unexpected poll event %d", name, event)
-            return
+            raise IOError("[%s] invalid poll event: %d", name, event)
 
         buf = sock.recv(2048)
 
