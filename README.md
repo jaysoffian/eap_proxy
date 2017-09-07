@@ -57,36 +57,40 @@ Good luck. It works for me on my EdgeRouter Lite running EdgeOS v1.9.1.1.
 ## Usage
 
 ```
-usage: eap_proxy [-h] [--ignore-wan-up] [--ignore-start] [--ignore-logoff]
-                 [--restart-dhcp] [--set-mac] [--daemon] [--pidfile PIDFILE]
-                 [--syslog] [--promiscuous] [--debug-packets]
+usage: eap_proxy [-h] [--ignore-wan-has-ip] [--ignore-wan-ping-gateway]
+                 [--ignore-start] [--ignore-logoff] [--restart-dhcp]
+                 [--set-mac] [--daemon] [--pidfile PIDFILE] [--syslog]
+                 [--promiscuous] [--debug-packets]
                  IF_WAN IF_ROUTER
 
 positional arguments:
-  IF_WAN             interface of the AT&T ONT/WAN
-  IF_ROUTER          interface of the AT&T router
+  IF_WAN                interface of the AT&T ONT/WAN
+  IF_ROUTER             interface of the AT&T router
 
 optional arguments:
-  -h, --help         show this help message and exit
+  -h, --help            show this help message and exit
 
 ignoring router packets:
-  --ignore-wan-up    ignore router packets if IF_WAN.0 has a reachable default
-                     gateway
-  --ignore-start     always ignore EAPOL-Start from router
-  --ignore-logoff    always ignore EAPOL-Logoff from router
+  --ignore-wan-has-ip   ignore router packets if IF_WAN.0 has an IP address
+                        assigned
+  --ignore-wan-ping-gateway
+                        ignore router packets if IF_WAN.0 has a reachable
+                        default gateway
+  --ignore-start        always ignore EAPOL-Start from router
+  --ignore-logoff       always ignore EAPOL-Logoff from router
 
 configuring IF_WAN.0 VLAN:
-  --restart-dhcp     restart IF_WAN.0 dhclient after receiving EAP-Success if
-                     IF_WAN.0 does not have a reachable default gateway
-  --set-mac          set IF_WAN.0 MAC to router's MAC
+  --restart-dhcp        restart IF_WAN.0 dhclient after receiving EAP-Success
+                        if IF_WAN.0 does not have a reachable default gateway
+  --set-mac             set IF_WAN.0 MAC to router's MAC
 
 daemonization:
-  --daemon           become a daemon; implies --syslog
-  --pidfile PIDFILE  record pid to PIDFILE
-  --syslog           log to syslog instead of stderr
+  --daemon              become a daemon; implies --syslog
+  --pidfile PIDFILE     record pid to PIDFILE
+  --syslog              log to syslog instead of stderr
 
 debugging:
-  --promiscuous      place interfaces into promiscuous mode instead of
-                     multicast
-  --debug-packets    print packets in hex format to assist with debugging
+  --promiscuous         place interfaces into promiscuous mode instead of
+                        multicast
+  --debug-packets       print packets in hex format to assist with debugging
 ```

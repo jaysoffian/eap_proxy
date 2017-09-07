@@ -6,38 +6,42 @@ Inspired by 1x_prox as posted here:
 
     AT&T Residential Gateway Bypass - True bridge mode!
 
-usage: eap_proxy [-h] [--ignore-wan-up] [--ignore-start] [--ignore-logoff]
-                 [--restart-dhcp] [--set-mac] [--daemon] [--pidfile PIDFILE]
-                 [--syslog] [--promiscuous] [--debug-packets]
+usage: eap_proxy [-h] [--ignore-wan-has-ip] [--ignore-wan-ping-gateway]
+                 [--ignore-start] [--ignore-logoff] [--restart-dhcp]
+                 [--set-mac] [--daemon] [--pidfile PIDFILE] [--syslog]
+                 [--promiscuous] [--debug-packets]
                  IF_WAN IF_ROUTER
 
 positional arguments:
-  IF_WAN             interface of the AT&T ONT/WAN
-  IF_ROUTER          interface of the AT&T router
+  IF_WAN                interface of the AT&T ONT/WAN
+  IF_ROUTER             interface of the AT&T router
 
 optional arguments:
-  -h, --help         show this help message and exit
+  -h, --help            show this help message and exit
 
 ignoring router packets:
-  --ignore-wan-up    ignore router packets if IF_WAN.0 has a reachable default
-                     gateway
-  --ignore-start     always ignore EAPOL-Start from router
-  --ignore-logoff    always ignore EAPOL-Logoff from router
+  --ignore-wan-has-ip   ignore router packets if IF_WAN.0 has an IP address
+                        assigned
+  --ignore-wan-ping-gateway
+                        ignore router packets if IF_WAN.0 has a reachable
+                        default gateway
+  --ignore-start        always ignore EAPOL-Start from router
+  --ignore-logoff       always ignore EAPOL-Logoff from router
 
 configuring IF_WAN.0 VLAN:
-  --restart-dhcp     restart IF_WAN.0 dhclient after receiving EAP-Success if
-                     IF_WAN.0 does not have a reachable default gateway
-  --set-mac          set IF_WAN.0 MAC to router's MAC
+  --restart-dhcp        restart IF_WAN.0 dhclient after receiving EAP-Success
+                        if IF_WAN.0 does not have a reachable default gateway
+  --set-mac             set IF_WAN.0 MAC to router's MAC
 
 daemonization:
-  --daemon           become a daemon; implies --syslog
-  --pidfile PIDFILE  record pid to PIDFILE
-  --syslog           log to syslog instead of stderr
+  --daemon              become a daemon; implies --syslog
+  --pidfile PIDFILE     record pid to PIDFILE
+  --syslog              log to syslog instead of stderr
 
 debugging:
-  --promiscuous      place interfaces into promiscuous mode instead of
-                     multicast
-  --debug-packets    print packets in hex format to assist with debugging
+  --promiscuous         place interfaces into promiscuous mode instead of
+                        multicast
+  --debug-packets       print packets in hex format to assist with debugging
 """
 # pylint:disable=invalid-name,missing-docstring
 import argparse
@@ -67,6 +71,7 @@ IFF_PROMISC = 0x100
 PACKET_ADD_MEMBERSHIP = 1
 PACKET_MR_MULTICAST = 0
 CHECK_VLAN_IF_TTL = 75
+SIOCGIFADDR = 0x8915
 SIOCGIFFLAGS = 0x8913
 SIOCSIFFLAGS = 0x8914
 SOL_PACKET = 263
@@ -80,9 +85,19 @@ class struct_sockaddr(ctypes.Structure):
         ("sa_data", ctypes.c_ubyte * 14))
 
 
-class struct_ifr_ifru(ctypes.Union):
+class struct_sockaddr_in(ctypes.Structure):
     # pylint:disable=too-few-public-methods
     _fields_ = (
+        ("sin_family", ctypes.c_ushort),
+        ("sin_port", ctypes.c_ushort),
+        ("sin_addr", ctypes.c_uint32),
+        ("sin_zero", ctypes.c_char * 8))
+
+
+class union_ifr_ifru(ctypes.Union):
+    # pylint:disable=too-few-public-methods
+    _fields_ = (
+        ("ifr_addr", struct_sockaddr_in),
         ("ifr_hwaddr", struct_sockaddr),
         ("ifr_flags", ctypes.c_short))
 
@@ -92,7 +107,7 @@ class struct_ifreq(ctypes.Structure):
     _anonymous_ = ("ifr_ifru",)
     _fields_ = (
         ("ifr_name", ctypes.c_char * 16),
-        ("ifr_ifru", struct_ifr_ifru))
+        ("ifr_ifru", union_ifr_ifru))
 
 
 class struct_packet_mreq(ctypes.Structure):
@@ -125,13 +140,26 @@ def enable_promisc(sock):
     return sock
 
 
+_libc = ctypes.CDLL(ctypes.util.find_library('c'))
+if_nametoindex = _libc.if_nametoindex
+del _libc
+
+
 def if_name(sock):
     return sock.getsockname()[0]
 
 
-_libc = ctypes.CDLL(ctypes.util.find_library('c'))
-if_nametoindex = _libc.if_nametoindex
-del _libc
+def if_addr(name):
+    """Return IP of `name` interface or None if unassigned or error."""
+    # pylint:disable=attribute-defined-outside-init
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_IP)
+    ifr = struct_ifreq()
+    ifr.ifr_name = name
+    try:
+        ioctl(sock, SIOCGIFADDR, ifr)
+    except IOError:
+        return None
+    return socket.inet_ntoa(struct.pack("!I", ifr.ifr_addr.sin_addr))
 
 
 def if_open(name, poll=None, promisc=False):
@@ -454,6 +482,8 @@ class EAPProxy(object):
             try:
                 self.log("proxy_loop starting")
                 self.proxy_loop()
+            except KeyboardInterrupt:
+                return
             except Exception as ex:  # pylint:disable=broad-except
                 self.warn("%s; restarting in 10 seconds", strexc(), exc_info=ex)
             else:
@@ -541,12 +571,21 @@ class EAPProxy(object):
 
     def check_vlan_interface(self):
         args = self.args
-        if not args.ignore_wan_up:
+        if args.ignore_wan_has_ip:
+            # just check for an ip
+            check_interface = if_addr
+        elif args.ignore_wan_ping_gateway:
+            # check for an ip, then try to ping the default gateway
+            def check_interface(name):
+                addr = if_addr(name)
+                if addr and self.os.check_interface(name):
+                    return addr
+        else:
             return False
 
         if_vlan = args.if_wan + ".0"
         if time.time() - self.last_check_vlan_if_time >= CHECK_VLAN_IF_TTL:
-            cached, result = False, self.os.check_interface(if_vlan)
+            cached, result = False, check_interface(if_vlan)
             self.last_check_vlan_if_result = result
             self.last_check_vlan_if_time = time.time()
         else:
@@ -554,7 +593,7 @@ class EAPProxy(object):
 
         self.log(
             "%s: check interface %s%s", if_vlan,
-            "succeeded" if result else "failed",
+            "success [%s]" % result if result else "failure",
             " (cached)" if cached else '')
 
         return result
@@ -574,7 +613,10 @@ def parse_args():
     # ignoring packet options
     g = p.add_argument_group("ignoring router packets")
     g.add_argument(
-        "--ignore-wan-up", action="store_true", help=
+        "--ignore-wan-has-ip", action="store_true", help=
+        "ignore router packets if IF_WAN.0 has an IP address assigned")
+    g.add_argument(
+        "--ignore-wan-ping-gateway", action="store_true", help=
         "ignore router packets if IF_WAN.0 has a reachable default gateway")
     g.add_argument(
         "--ignore-start", action="store_true", help=
