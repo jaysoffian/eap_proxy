@@ -155,23 +155,15 @@ def getifhwaddr(ifname):
 
 ### Ping
 
-def icmp_chksum(packet):
-    # split into 16-bit words and sum
-    if len(packet) % 2:
-        last_byte = socket.htons(ord(packet[-1]))
-        packet = packet[:-1]
-    else:
-        last_byte = 0
-    arr = array.array('H', packet)
-    if sys.byteorder == "little":
-        arr.byteswap()
-    cksum = sum(arr) + last_byte
-    # return one's complement of the sum
-    cksum &= 0xffffffff
-    cksum = (cksum >> 16) + (cksum & 0xffff)  # add high and low 16 bits
-    cksum += cksum >> 16     # add carry
-    cksum = ~cksum & 0xffff  # invert and truncate
-    return cksum
+def ipchecksum(packet):
+    """Return IP checksum of `packet`"""
+    # c.f. https://tools.ietf.org/html/rfc1071
+    arr = array.array('H', packet + '\0' if len(packet) % 2 else packet)
+    chksum = sum(arr)
+    chksum = (chksum >> 16) + (chksum & 0xffff)  # add high and low 16 bits
+    chksum += chksum >> 16  # add carry
+    chksum = ~chksum & 0xffff  # invert and truncate
+    return socket.htons(chksum)  # per RFC 1071
 
 
 def pingaddr(ipaddr, data='', timeout=1.0, strict=False):
@@ -187,7 +179,7 @@ def pingaddr(ipaddr, data='', timeout=1.0, strict=False):
     icmp_struct = struct.Struct("!BBHHH")
     echoid = os.getpid() & 0xffff
     seqnum = random.randint(0, 0xffff)
-    chksum = icmp_chksum(icmp_struct.pack(8, 0, 0, echoid, seqnum) + data)
+    chksum = ipchecksum(icmp_struct.pack(8, 0, 0, echoid, seqnum) + data)
     packet = icmp_struct.pack(8, 0, chksum, echoid, seqnum) + data
     # send it and check reply
     sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, 1)
