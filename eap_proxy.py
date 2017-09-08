@@ -45,12 +45,14 @@ debugging:
 """
 # pylint:disable=invalid-name,missing-docstring
 import argparse
+import array
 import atexit
 import ctypes
 import ctypes.util
 import logging
 import logging.handlers
 import os
+import random
 import re
 import select
 import signal
@@ -66,7 +68,7 @@ from functools import partial
 
 ### Constants
 
-CHECK_VLAN_IF_TTL = 75
+CHECK_VLAN_IF_TTL = 30
 EAP_MULTICAST_ADDR = (0x01, 0x80, 0xc2, 0x00, 0x00, 0x03)
 ETH_P_PAE = 0x888e  # IEEE 802.1X (Port Access Entity)
 IFF_PROMISC = 0x100
@@ -150,6 +152,63 @@ def getifhwaddr(ifname):
         s = f.readline()
     octets = s.split(':')
     return ''.join(chr(int(x, 16)) for x in octets)
+
+### Ping
+
+def icmp_chksum(packet):
+    # split into 16-bit words and sum
+    if len(packet) % 2:
+        last_byte = socket.htons(ord(packet[-1]))
+        packet = packet[:-1]
+    else:
+        last_byte = 0
+    arr = array.array('H', packet)
+    if sys.byteorder == "little":
+        arr.byteswap()
+    cksum = sum(arr) + last_byte
+    # return one's complement of the sum
+    cksum &= 0xffffffff
+    cksum = (cksum >> 16) + (cksum & 0xffff)  # add high and low 16 bits
+    cksum += cksum >> 16     # add carry
+    cksum = ~cksum & 0xffff  # invert and truncate
+    return cksum
+
+
+def pingaddr(ipaddr, data='', timeout=1.0, strict=False):
+    """Return True if `ipaddr` replies to an ICMP ECHO request within
+       `timeout` seconds else False. Provide optional `data` to include in
+       the request. Any reply from `ipaddr` will suffice. Use `strict` to
+       accept only a reply matching the request.
+    """
+    # pylint:disable=too-many-locals
+    # construct packet
+    if len(data) > 2000:
+        raise ValueError("data too large")
+    icmp_struct = struct.Struct("!BBHHH")
+    echoid = os.getpid() & 0xffff
+    seqnum = random.randint(0, 0xffff)
+    chksum = icmp_chksum(icmp_struct.pack(8, 0, 0, echoid, seqnum) + data)
+    packet = icmp_struct.pack(8, 0, chksum, echoid, seqnum) + data
+    # send it and check reply
+    sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, 1)
+    sock.sendto(packet, (ipaddr, 1))
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        ready, __, __ = select.select([sock], (), (), timeout)
+        if not ready:
+            return False
+        packet, peer = sock.recvfrom(2048)
+        if peer[0] != ipaddr:
+            continue
+        if not strict:
+            return True
+        # verify it's a reply to the packet we just sent
+        packet = packet[20:]  # strip IP header
+        fields = icmp_struct.unpack(packet[:8])
+        theirs = fields[-2:] + (packet[8:],)
+        if theirs == (echoid, seqnum, data):
+            return True
+    return False
 
 ### Helpers
 
@@ -292,6 +351,7 @@ def getdefaultroute():
 
 class EdgeOS(object):
     def __init__(self, log):
+        self.log = log.info
         self.warn = log.warning
 
     def run(self, *args):
@@ -371,9 +431,9 @@ class EdgeOS(object):
                     "unexpected default route: %s %s",
                     via_ipaddr, via_ifname)
             return False
-        rc, __ = self.run("ping", "-c", "1", "-w", "1", via_ipaddr)
-        return True if rc == 0 else False
-
+        rv = pingaddr(via_ipaddr)
+        self.log("ping %s %s", via_ipaddr, "success" if rv else "failed")
+        return rv
 
 ### EAP frame/packet decoding
 # c.f. https://github.com/the-tcpdump-group/tcpdump/blob/master/print-eap.c
@@ -583,7 +643,7 @@ class EAPProxy(object):
 
         self.log(
             "%s: check interface %s%s", if_vlan,
-            "success [%s]" % result if result else "failure",
+            "success [%s]" % result if result else "failed",
             " (cached)" if cached else '')
 
         return result
