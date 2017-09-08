@@ -6,10 +6,10 @@ Inspired by 1x_prox as posted here:
 
     AT&T Residential Gateway Bypass - True bridge mode!
 
-usage: eap_proxy [-h] [--ignore-wan-has-ip] [--ignore-wan-ping-gateway]
-                 [--ignore-start] [--ignore-logoff] [--restart-dhcp]
-                 [--set-mac] [--daemon] [--pidfile PIDFILE] [--syslog]
-                 [--promiscuous] [--debug-packets]
+usage: eap_proxy [-h] [--ping-gateway] [--ignore-when-wan-up] [--ignore-start]
+                 [--ignore-logoff] [--restart-dhcp] [--set-mac] [--daemon]
+                 [--pidfile PIDFILE] [--syslog] [--promiscuous]
+                 [--debug-packets]
                  IF_WAN IF_ROUTER
 
 positional arguments:
@@ -19,19 +19,24 @@ positional arguments:
 optional arguments:
   -h, --help            show this help message and exit
 
+checking whether WAN is up:
+  --ping-gateway        normally the WAN is considered up if IF_WAN.0 has an
+                        IP address; this option additionally requires that
+                        there is a default route gateway that responds to a
+                        ping
+
 ignoring router packets:
-  --ignore-wan-has-ip   ignore router packets if IF_WAN.0 has an IP address
-                        assigned
-  --ignore-wan-ping-gateway
-                        ignore router packets if IF_WAN.0 has a reachable
-                        default gateway
+  --ignore-when-wan-up  ignore router packets when WAN is up (see --ping-
+                        gateway)
   --ignore-start        always ignore EAPOL-Start from router
   --ignore-logoff       always ignore EAPOL-Logoff from router
 
 configuring IF_WAN.0 VLAN:
-  --restart-dhcp        restart IF_WAN.0 dhclient after receiving EAP-Success
-                        if IF_WAN.0 does not have a reachable default gateway
-  --set-mac             set IF_WAN.0 MAC to router's MAC
+  --restart-dhcp        check whether WAN is up after receiving EAP-Success on
+                        IF_WAN (see --ping-gateway); if not, restart dhclient
+                        on IF_WAN.0
+  --set-mac             set IF_WAN.0's MAC (ether) address to router's MAC
+                        address
 
 daemonization:
   --daemon              become a daemon; implies --syslog
@@ -68,7 +73,6 @@ from functools import partial
 
 ### Constants
 
-CHECK_VLAN_IF_TTL = 30
 EAP_MULTICAST_ADDR = (0x01, 0x80, 0xc2, 0x00, 0x00, 0x03)
 ETH_P_PAE = 0x888e  # IEEE 802.1X (Port Access Entity)
 IFF_PROMISC = 0x100
@@ -153,6 +157,21 @@ def getifhwaddr(ifname):
     octets = s.split(':')
     return ''.join(chr(int(x, 16)) for x in octets)
 
+
+def getdefaultgatewayaddr():
+    """Return IP of default route gateway (next hop) in 1.2.3.4 notation
+       or None if there is not default route.
+    """
+    search = re.compile(r"^\S+\s+00000000\s+([0-9a-fA-F]{8})").search
+    with open("/proc/net/route") as f:
+        for line in f:
+            m = search(line)
+            if m:
+                hexaddr = m.group(1)
+                octets = (hexaddr[i:i + 2] for i in xrange(0, 7, 2))
+                ipaddr = '.'.join(str(int(octet, 16)) for octet in octets)
+                return ipaddr
+
 ### Ping
 
 def ipchecksum(packet):
@@ -231,14 +250,13 @@ def strexc():
         if exc_type is None:
             return ''
         # find last frame in this script
-        pathname, lineno, func = '', 0, ''
+        lineno, func = 0, ''
         for frame in traceback.extract_tb(tb):
             if frame[0] != __file__:
                 break
-            pathname, lineno, func = frame[:3]
-        filename = os.path.basename(pathname)
-        return "%s (%s:%s) %s: %s" % (
-            func, filename, lineno, exc_type.__name__, exc_value)
+            lineno, func = frame[1:3]
+        return "exception in %s line %s (%s: %s)" % (
+            func, lineno, exc_type.__name__, exc_value)
     finally:
         del tb
 
@@ -324,22 +342,6 @@ def make_logger(use_syslog=False):
 
 ### EdgeOS
 
-def getdefaultroute():
-    """Return (ifname, ipaddr) of default route or (None, None)"""
-    search = re.compile(r"^(\S+)\s+00000000\s+([0-9a-fA-F]{8})").search
-    m = None
-    with open("/proc/net/route") as f:
-        for line in f:
-            m = search(line)
-            if m:
-                break
-    if not m:
-        return None, None
-    ifname, hexaddr = m.groups()
-    octets = (hexaddr[i:i + 2] for i in xrange(0, 7, 2))
-    ipaddr = '.'.join(str(int(octet, 16)) for octet in octets)
-    return ifname, ipaddr
-
 
 class EdgeOS(object):
     def __init__(self, log):
@@ -413,19 +415,6 @@ class EdgeOS(object):
     def getmac(ifname):
         """Return MAC address for `ifname` as a packed string."""
         return getifhwaddr(ifname)
-
-    def check_interface(self, ifname):
-        """Check interface `ifname` has a pingable default route."""
-        via_ifname, via_ipaddr = getdefaultroute()
-        if via_ifname != ifname:
-            if via_ifname:
-                self.warn(
-                    "unexpected default route: %s %s",
-                    via_ipaddr, via_ifname)
-            return False
-        rv = pingaddr(via_ipaddr)
-        self.log("ping %s %s", via_ipaddr, "success" if rv else "failed")
-        return rv
 
 ### EAP frame/packet decoding
 # c.f. https://github.com/the-tcpdump-group/tcpdump/blob/master/print-eap.c
@@ -518,8 +507,6 @@ class EAPProxy(object):
     def __init__(self, args, log):
         self.args = args
         self.os = EdgeOS(log)
-        self.last_check_vlan_if_result = False
-        self.last_check_vlan_if_time = 0
         self.log = log.info
         self.warn = log.warning
 
@@ -584,7 +571,9 @@ class EAPProxy(object):
             return True
         if args.ignore_logoff and eap.is_logoff:
             return True
-        return self.check_vlan_interface()
+        if args.ignore_when_wan_up:
+            return self.check_wan_is_up()
+        return False
 
     def on_router_eap(self, eap):
         args = self.args
@@ -599,47 +588,35 @@ class EAPProxy(object):
         self.os.setmac(if_vlan, eap.src)
 
     def on_wan_eap(self, eap):
-        args = self.args
-        if not args.restart_dhcp:
+        if not self.should_restart_dhcp(eap):
             return
-        if not eap.is_success:
-            return
-        if self.check_vlan_interface():
-            return
-
-        if_vlan = args.if_wan + ".0"
+        if_vlan = self.args.if_wan + ".0"
         self.log("%s: restarting dhclient", if_vlan)
         self.os.restart_dhclient(if_vlan)
 
-    def check_vlan_interface(self):
+    def should_restart_dhcp(self, eap):
+        if self.args.restart_dhcp and eap.is_success:
+            return not self.check_wan_is_up()
+        return False
+
+    def check_wan_is_up(self):
         args = self.args
-        if args.ignore_wan_has_ip:
-            # just check for an ip
-            check_interface = getifaddr
-        elif args.ignore_wan_ping_gateway:
-            # check for an ip, then try to ping the default gateway
-            def check_interface(name):
-                addr = getifaddr(name)
-                if addr and self.os.check_interface(name):
-                    return addr
-        else:
-            return False
-
         if_vlan = args.if_wan + ".0"
-        if time.time() - self.last_check_vlan_if_time >= CHECK_VLAN_IF_TTL:
-            cached, result = False, check_interface(if_vlan)
-            self.last_check_vlan_if_result = result
-            self.last_check_vlan_if_time = time.time()
-        else:
-            cached, result = True, self.last_check_vlan_if_result
+        ipaddr = getifaddr(if_vlan)
+        if ipaddr:
+            self.log("%s: %s", if_vlan, ipaddr)
+            return self.ping_gateway() if args.ping_gateway else True
+        self.log("%s: no IP address", if_vlan)
+        return False
 
-        self.log(
-            "%s: check interface %s%s", if_vlan,
-            "success [%s]" % result if result else "failed",
-            " (cached)" if cached else '')
-
-        return result
-
+    def ping_gateway(self):
+        ipaddr = getdefaultgatewayaddr()
+        if not ipaddr:
+            self.log("ping: no default route gateway")
+            return False
+        rv = pingaddr(ipaddr)
+        self.log("ping: %s %s", ipaddr, "success" if rv else "failed")
+        return rv
 
 ### Main
 
@@ -652,14 +629,19 @@ def parse_args():
     p.add_argument(
         "if_rtr", metavar="IF_ROUTER", help="interface of the AT&T router")
 
+    # checking whether WAN is up
+    g = p.add_argument_group("checking whether WAN is up")
+    g.add_argument(
+        "--ping-gateway", action="store_true", help=
+        "normally the WAN is considered up if IF_WAN.0 has an IP address; "
+        "this option additionally requires that there is a default route "
+        "gateway that responds to a ping")
+
     # ignoring packet options
     g = p.add_argument_group("ignoring router packets")
     g.add_argument(
-        "--ignore-wan-has-ip", action="store_true", help=
-        "ignore router packets if IF_WAN.0 has an IP address assigned")
-    g.add_argument(
-        "--ignore-wan-ping-gateway", action="store_true", help=
-        "ignore router packets if IF_WAN.0 has a reachable default gateway")
+        "--ignore-when-wan-up", action="store_true", help=
+        "ignore router packets when WAN is up (see --ping-gateway)")
     g.add_argument(
         "--ignore-start", action="store_true", help=
         "always ignore EAPOL-Start from router")
@@ -671,11 +653,11 @@ def parse_args():
     g = p.add_argument_group("configuring IF_WAN.0 VLAN")
     g.add_argument(
         "--restart-dhcp", action="store_true", help=
-        "restart IF_WAN.0 dhclient after receiving EAP-Success "
-        "if IF_WAN.0 does not have a reachable default gateway")
+        "check whether WAN is up after receiving EAP-Success on IF_WAN "
+        "(see --ping-gateway); if not, restart dhclient on IF_WAN.0")
     g.add_argument(
         "--set-mac", action="store_true", help=
-        "set IF_WAN.0 MAC to router's MAC")
+        "set IF_WAN.0's MAC (ether) address to router's MAC address")
 
     # daemonization options
     g = p.add_argument_group("daemonization")
