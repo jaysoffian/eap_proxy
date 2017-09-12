@@ -59,7 +59,7 @@ Good luck. It works for me on my EdgeRouter Lite running EdgeOS v1.9.1.1.
 ```
 usage: eap_proxy [-h] [--ping-gateway] [--ignore-when-wan-up] [--ignore-start]
                  [--ignore-logoff] [--restart-dhcp] [--set-mac] [--daemon]
-                 [--pidfile PIDFILE] [--syslog] [--promiscuous]
+                 [--pidfile PIDFILE] [--syslog] [--promiscuous] [--debug]
                  [--debug-packets]
                  IF_WAN IF_ROUTER
 
@@ -97,5 +97,7 @@ daemonization:
 debugging:
   --promiscuous         place interfaces into promiscuous mode instead of
                         multicast
-  --debug-packets       print packets in hex format to assist with debugging
+  --debug               enable debug-level logging
+  --debug-packets       print packets in hex format to assist with debugging;
+                        implies --debug
 ```

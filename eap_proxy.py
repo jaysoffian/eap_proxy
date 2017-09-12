@@ -8,7 +8,7 @@ Inspired by 1x_prox as posted here:
 
 usage: eap_proxy [-h] [--ping-gateway] [--ignore-when-wan-up] [--ignore-start]
                  [--ignore-logoff] [--restart-dhcp] [--set-mac] [--daemon]
-                 [--pidfile PIDFILE] [--syslog] [--promiscuous]
+                 [--pidfile PIDFILE] [--syslog] [--promiscuous] [--debug]
                  [--debug-packets]
                  IF_WAN IF_ROUTER
 
@@ -46,7 +46,9 @@ daemonization:
 debugging:
   --promiscuous         place interfaces into promiscuous mode instead of
                         multicast
-  --debug-packets       print packets in hex format to assist with debugging
+  --debug               enable debug-level logging
+  --debug-packets       print packets in hex format to assist with debugging;
+                        implies --debug
 """
 # pylint:disable=invalid-name,missing-docstring
 import argparse
@@ -322,7 +324,7 @@ def daemonize():
     os.dup2(nullerr.fileno(), sys.stderr.fileno())
 
 
-def make_logger(use_syslog=False):
+def make_logger(use_syslog=False, debug=False):
     """Return new logging.Logger object."""
     if use_syslog:
         formatter = logging.Formatter("eap_proxy[%(process)d]: %(message)s")
@@ -336,7 +338,10 @@ def make_logger(use_syslog=False):
         handler.setFormatter(formatter)
 
     logger = logging.getLogger("eap_proxy")
-    logger.setLevel(logging.DEBUG)
+    if debug:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
     logger.addHandler(handler)
     return logger
 
@@ -345,14 +350,13 @@ def make_logger(use_syslog=False):
 
 class EdgeOS(object):
     def __init__(self, log):
-        self.log = log.info
-        self.warn = log.warning
+        self.log = log
 
     def run(self, *args):
         try:
             return 0, subprocess.check_output(args)
         except subprocess.CalledProcessError as ex:
-            self.warn("%s exited %d", args, ex.returncode)
+            self.log.warn("%s exited %d", args, ex.returncode)
             return ex.returncode, ex.output
 
     def run_vyatta_interfaces(self, name, *args):
@@ -507,20 +511,20 @@ class EAPProxy(object):
     def __init__(self, args, log):
         self.args = args
         self.os = EdgeOS(log)
-        self.log = log.info
-        self.warn = log.warning
+        self.log = log
 
     def proxy_forever(self):
+        log = self.log
         while True:
             try:
-                self.log("proxy_loop starting")
+                log.info("proxy_loop starting")
                 self.proxy_loop()
             except KeyboardInterrupt:
                 return
             except Exception as ex:  # pylint:disable=broad-except
-                self.warn("%s; restarting in 10 seconds", strexc(), exc_info=ex)
+                log.warn("%s; restarting in 10 seconds", strexc(), exc_info=ex)
             else:
-                self.warn("proxy_loop exited; restarting in 10 seconds")
+                log.warn("proxy_loop exited; restarting in 10 seconds")
             time.sleep(10)
 
     def proxy_loop(self):
@@ -537,32 +541,32 @@ class EAPProxy(object):
                 on_poll_event(socks[fd], event)
 
     def on_poll_event(self, sock_in, event, s_rtr, s_wan):
+        log = self.log
         ifname = getifname(sock_in)
         if event != select.POLLIN:  # pylint:disable=no-member
-            raise IOError("[%s] invalid poll event: %d", ifname, event)
+            raise IOError("[%s] unexpected poll event: %d", ifname, event)
 
         buf = sock_in.recv(2048)
 
         if self.args.debug_packets:
-            self.log("%s: recv %d bytes:\n%s", ifname, len(buf), strbuf(buf))
-        else:
-            self.log("%s: recv %d bytes", ifname, len(buf))
+            log.debug("%s: recv %d bytes:\n%s", ifname, len(buf), strbuf(buf))
 
         eap = EAPFrame.from_buf(buf)
-        self.log("%s: %s", ifname, eap)
+        log.debug("%s: %s", ifname, eap)
 
         if sock_in == s_rtr:
             sock_out = s_wan
             self.on_router_eap(eap)
             if self.should_ignore_router_eap(eap):
-                self.log("%s: ignoring %s", ifname, eap.type_name)
+                log.debug("%s: ignoring %s", ifname, eap)
                 return
         else:
             sock_out = s_rtr
             self.on_wan_eap(eap)
 
-        sent = sock_out.send(buf)
-        self.log("%s: sent %d bytes", getifname(sock_out), sent)
+        log.info("%s: %s > %s", ifname, eap, getifname(sock_out))
+        nbytes = sock_out.send(buf)
+        log.debug("%s: sent %d bytes", getifname(sock_out), nbytes)
 
 
     def should_ignore_router_eap(self, eap):
@@ -584,14 +588,14 @@ class EAPProxy(object):
         if self.os.getmac(if_vlan) == eap.src:
             return
 
-        self.log("%s: setting mac to %s", if_vlan, strmac(eap.src))
+        self.log.info("%s: setting mac to %s", if_vlan, strmac(eap.src))
         self.os.setmac(if_vlan, eap.src)
 
     def on_wan_eap(self, eap):
         if not self.should_restart_dhcp(eap):
             return
         if_vlan = self.args.if_wan + ".0"
-        self.log("%s: restarting dhclient", if_vlan)
+        self.log.info("%s: restarting dhclient", if_vlan)
         self.os.restart_dhclient(if_vlan)
 
     def should_restart_dhcp(self, eap):
@@ -600,22 +604,23 @@ class EAPProxy(object):
         return False
 
     def check_wan_is_up(self):
-        args = self.args
+        args, log = self.args, self.log
         if_vlan = args.if_wan + ".0"
         ipaddr = getifaddr(if_vlan)
         if ipaddr:
-            self.log("%s: %s", if_vlan, ipaddr)
+            log.debug("%s: %s", if_vlan, ipaddr)
             return self.ping_gateway() if args.ping_gateway else True
-        self.log("%s: no IP address", if_vlan)
+        log.debug("%s: no IP address", if_vlan)
         return False
 
     def ping_gateway(self):
+        log = self.log
         ipaddr = getdefaultgatewayaddr()
         if not ipaddr:
-            self.log("ping: no default route gateway")
+            log.debug("ping: no default route gateway")
             return False
         rv = pingaddr(ipaddr)
-        self.log("ping: %s %s", ipaddr, "success" if rv else "failed")
+        log.debug("ping: %s %s", ipaddr, "success" if rv else "failed")
         return rv
 
 ### Main
@@ -675,20 +680,26 @@ def parse_args():
         "--promiscuous", action="store_true", help=
         "place interfaces into promiscuous mode instead of multicast")
     g.add_argument(
+        "--debug", action="store_true", help=
+        "enable debug-level logging")
+    g.add_argument(
         "--debug-packets", action="store_true", help=
-        "print packets in hex format to assist with debugging")
+        "print packets in hex format to assist with debugging; "
+        "implies --debug")
 
     args = p.parse_args()
     if args.daemon:
         args.syslog = True
-    if args.syslog and args.debug_packets:
-        p.error("--debug-packets not allowed with --syslog")
+    if args.debug_packets:
+        if args.syslog:
+            p.error("--debug-packets not allowed with --syslog")
+        args.debug = True
     return args
 
 
 def main():
     args = parse_args()
-    log = make_logger(args.syslog)
+    log = make_logger(args.syslog, args.debug)
 
     if args.pidfile:
         pid = checkpidfile(args.pidfile)
