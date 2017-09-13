@@ -57,7 +57,7 @@ I also have IPv6 working via 6rd. Here's the relevant configuration:
 ```
 set interfaces tunnel tun0 6rd-prefix '2602:300::/28'
 set interfaces tunnel tun0 6rd-default-gw '::12.83.49.81'
-set interfaces tunnel tun0 address '2602:30x:xxxx:xxxx::/60'
+set interfaces tunnel tun0 address '2602:30x:xxxx:xxxx::1/60'
 set interfaces tunnel tun0 description 'AT&T 6rd tunnel'
 set interfaces tunnel tun0 encapsulation sit
 set interfaces tunnel tun0 firewall in ipv6-name WAN6_IN
@@ -74,8 +74,8 @@ set system offload ipv6 forwarding enable
 The `6rd-prefix` and `6rd-default-gw` should be the same for all AT&T customers that are using 6rd. I've heard some areas may be on native dual-stack, but my area is not. The `local-ip` is your DHCP-issued WAN IP. The `tun0 address` is your 6rd delegated prefix. It is based on your WAN IP and can be computed with this bit of python:
 
 ```
-python -c 'import sys;a,b,c,d=map(int,sys.argv[1].split("."));print "2602:30%x:%x%02x%x:%x%02x0::/60" % (a>>4,a&15,b,c>>4,c&15,d)' 1.2.3.4
-2602:300:1020:3040::/60
+python -c 'import sys;a,b,c,d=map(int,sys.argv[1].split("."));print "2602:30%x:%x%02x%x:%x%02x0::1/60" % (a>>4,a&15,b,c>>4,c&15,d)' 1.2.3.4
+2602:300:1020:3040::1/60
 ```
 
 If you aren't already using `dnsmasq` for DHCP, you might want to use `radvd` instead. [See the example here](https://help.ubnt.com/hc/en-us/articles/204960044-EdgeRouter-Enable-IPv6-support-via-CLI) (it's the `router-advert` section).
