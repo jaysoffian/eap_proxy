@@ -71,7 +71,7 @@ set system offload ipv6 forwarding enable
 The `6rd-prefix` and `6rd-default-gw` should be the same for all AT&T customers that are using 6rd. I've heard some areas may be on native dual-stack, but my area is not. The `local-ip` is your DHCP-issued WAN IP. The `tun0 address` is your 6rd delegated prefix. It is based on your WAN IP and can be computed with this bit of python:
 
 ```
-python -c 'import sys;a,b,c,d=map(int,sys.argv[1].split("."));a1=(a&0xf0)>>4;a2=a&0x0f;c1=(c&0xf0)>>4;c2=c&0x0f;print "2602:30%x:%x%02x%x:%x%02x0::1/60" % (a1,a2,b,c1,c2,d)' 1.2.3.4
+python -c 'import sys;a,b,c,d=map(int,sys.argv[1].split("."));print "2602:30%x:%x%02x%x:%x%02x0::1/60" % (a>>4,a&15,b,c>>4,c&15,d)' 1.2.3.4
 2602:300:1020:3040::1/60
 ```
 
