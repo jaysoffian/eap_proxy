@@ -65,6 +65,9 @@ set interfaces tunnel tun0 firewall local ipv6-name WAN6_LOCAL
 set interfaces tunnel tun0 local-ip YY.YY.YY.YY
 set interfaces tunnel tun0 multicast disable
 set interfaces tunnel tun0 ttl 255
+set service dhcp-server use-dnsmasq enable
+set service dns forwarding options enable-ra
+set service dns forwarding options 'dhcp-range=::1,constructor:eth1,ra-names,86400'
 set system offload ipv6 forwarding enable
 ```
 
@@ -74,6 +77,8 @@ The `6rd-prefix` and `6rd-default-gw` should be the same for all AT&T customers 
 python -c 'import sys;a,b,c,d=map(int,sys.argv[1].split("."));print "2602:30%x:%x%02x%x:%x%02x0::/60" % (a>>4,a&15,b,c>>4,c&15,d)' 1.2.3.4
 2602:300:1020:3040::/60
 ```
+
+If you aren't already using `dnsmasq` for DHCP, you might want to use `radvd` instead. [See the example here](https://help.ubnt.com/hc/en-us/articles/204960044-EdgeRouter-Enable-IPv6-support-via-CLI) (it's the `router-advert` section).
 
 It may be possible to configure the tun0 interface via DHCPv6; I haven't tried.
 
