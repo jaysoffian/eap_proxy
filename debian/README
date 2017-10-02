@@ -1,0 +1,6 @@
+The Debian Package vyatta-eap-proxy
+----------------------------
+
+This package has EAP proxy configuration templates and scripts.
+
+ -- John Doe <example@example.com>  Sat, 1 Oct 2017 17:53:53 -0700

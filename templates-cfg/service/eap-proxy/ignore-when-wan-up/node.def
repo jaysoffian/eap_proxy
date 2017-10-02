@@ -1,0 +1,7 @@
+type: txt
+default: "enable"
+help: Enable/disable ignoring router packets when WAN is up (see ping-gateway)
+allowed: echo enable disable
+syntax:expression: $VAR(@) in "enable", "disable"; "ignore-when-wan-up setting must be enable or disable"
+val_help: enable; Ignore router packets when WAN is up (default)
+val_help: disable; Keep proxying router packets when WAN is up

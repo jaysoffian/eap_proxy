@@ -1,0 +1,7 @@
+type: txt
+default: "enable"
+help: Enable/disable pinging gateway to check if WAN is up (in addition to having an IP)
+allowed: echo enable disable
+syntax:expression: $VAR(@) in "enable", "disable"; "ping-gateway setting must be enable or disable"
+val_help: enable; Ping gateway and check whether wan-interface.0 has an IP to check if WAN is up (default)
+val_help: disable; Only check whether wan-interface.0 has an IP to check if WAN is up

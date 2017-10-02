@@ -1,0 +1,7 @@
+type: txt
+default: "enable"
+help: Enable/disable ignoring EAPOL-Logoff from router
+allowed: echo enable disable
+syntax:expression: $VAR(@) in "enable", "disable"; "ignore-logoff setting must be enable or disable"
+val_help: enable; Always ignore EAPOL-Logoff from router (default)
+val_help: disable; Don't ignore EAPOL-Logoff from router
