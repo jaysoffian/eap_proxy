@@ -52,7 +52,7 @@ Note the `set system offload ipv4 vlan enable` command or you'll have horrible r
 
 Don't forget to update the rest of your config to reference `eth0.0` as your WAN interface as needed.
 
-I also have IPv6 working via 6rd. Here's the relevant configuration:
+I previously had IPv6 working via 6rd before my area was on native dual-stack. Here's the relevant 6rd configuration from that time:
 
 ```
 set interfaces tunnel tun0 6rd-prefix '2602:300::/28'
@@ -71,7 +71,7 @@ set service dns forwarding options 'dhcp-range=::1,constructor:eth1,ra-names,864
 set system offload ipv6 forwarding enable
 ```
 
-The `6rd-prefix` and `6rd-default-gw` should be the same for all AT&T customers that are using 6rd. I've heard some areas may be on native dual-stack, but my area is not. The `local-ip` is your DHCP-issued WAN IP. The `tun0 address` is your 6rd delegated prefix. It is based on your WAN IP and can be computed with this bit of python:
+The `6rd-prefix` and `6rd-default-gw` should be the same for all AT&T customers that are using 6rd. The `local-ip` is your DHCP-issued WAN IP. The `tun0 address` is your 6rd delegated prefix. It is based on your WAN IP and can be computed with this bit of python:
 
 ```
 python -c 'import sys;a,b,c,d=map(int,sys.argv[1].split("."));print "2602:30%x:%x%02x%x:%x%02x0::1/60" % (a>>4,a&15,b,c>>4,c&15,d)' 1.2.3.4
@@ -80,9 +80,9 @@ python -c 'import sys;a,b,c,d=map(int,sys.argv[1].split("."));print "2602:30%x:%
 
 If you aren't already using `dnsmasq` for DHCP, you might want to use `radvd` instead. [See the example here](https://help.ubnt.com/hc/en-us/articles/204960044-EdgeRouter-Enable-IPv6-support-via-CLI) (it's the `router-advert` section).
 
-It may be possible to configure the tun0 interface via DHCPv6; I haven't tried.
+For configuring IPv6 in areas that are on native dual-stack, please see the discussion in https://github.com/jaysoffian/eap_proxy/issues/3. FWIW, though I was able to get IPv6 to work correctly, I eventually disabled it for a couple reasons. First, AT&T's IPv6 network was flakey for me, and sometimes sites would randomly become unreachable. Second, even when IPv6 was working correctly, the latency for me to many sites was always significantly higher than over IPv4. YMMV.
 
-Good luck. It works for me on my EdgeRouter Lite running EdgeOS v1.9.1.1.
+Good luck. This proxy continues to work well for me. I originally developed it for use on an EdgeRouter Lite running EdgeOS v1.9.1.1. As of Sep 2018, I'm using it on an EdgeRouter 4 running EdgeOS v1.10.5. I know that it has also been used successfully on the ER-X and USG.
 
 ## Usage
 
