@@ -1,6 +1,6 @@
 # eap_proxy
 
-Proxy EAP packets between interfaces on a  Ubiquiti Networks EdgeRouter™ Lite
+Proxy EAP packets between interfaces on Ubiquiti Networks routers running EdgeOS.
 
 Inspired by 1x_prox as posted here:
 
