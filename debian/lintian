@@ -1,0 +1,2 @@
+vyatta-eap-proxy: file-in-unusual-dir
+vyatta-eap-proxy: dir-or-file-in-opt

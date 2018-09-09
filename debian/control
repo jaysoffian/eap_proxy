@@ -1,0 +1,13 @@
+Source: vyatta-eap-proxy
+Section: contrib/net
+Priority: extra
+Maintainer: John Doe <example@example.com>
+Standards-Version: 3.9.6
+Build-Depends: debhelper (>= 5), autotools-dev, autoconf
+
+Package: vyatta-eap-proxy
+Architecture: all
+Depends: vyatta-cfg-system, vyatta-cfg
+Replaces: vyatta-eap-proxy
+Description: EAP proxy
+ Proxy EAP packets between two interfaces

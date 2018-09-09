@@ -1,0 +1,4 @@
+priority: 999
+help: EAP proxy settings
+end:
+    sudo /opt/vyatta/sbin/vyatta-service-eap-proxy-update.sh

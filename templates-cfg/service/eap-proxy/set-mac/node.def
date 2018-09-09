@@ -1,0 +1,7 @@
+type: txt
+default: "disable"
+help: Enable/disable setting wan-interface.0's MAC address to router's MAC address
+allowed: echo enable disable
+syntax:expression: $VAR(@) in "enable", "disable"; "set-mac setting must be enable or disable"
+val_help: enable; Set wan-interface.0's MAC address to router's MAC address
+val_help: disable; Do not set wan-interface.0's MAC address to router's MAC address (default)

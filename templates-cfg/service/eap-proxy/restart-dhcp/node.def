@@ -1,0 +1,7 @@
+type: txt
+default: "enable"
+help: Enable/disable restarting dhclient on wan-interface.0 if WAN is not up after receiving EAP-Success on wan-interface (see ping-gateway)
+allowed: echo enable disable
+syntax:expression: $VAR(@) in "enable", "disable"; "restart-dhcp setting must be enable or disable"
+val_help: enable; Restart dhclient on wan-interface.0 if WAN is not up after receiving EAP-Success on wan-interface (default)
+val_help: disable; Do not restart dhclient on wan-interface.0 if WAN is not up after receiving EAP-Success on wan-interface
