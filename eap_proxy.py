@@ -170,9 +170,10 @@ def getdefaultgatewayaddr():
             m = search(line)
             if m:
                 hexaddr = m.group(1)
-                octets = (hexaddr[i:i + 2] for i in xrange(0, 7, 2))
-                ipaddr = '.'.join(str(int(octet, 16)) for octet in octets)
-                return ipaddr
+                octets = [hexaddr[i:i+2] for i in range(0, len(hexaddr), 2)]
+                ip = [int(i, 16) for i in reversed(octets)]
+                ip_formatted = '.'.join(str(i) for i in ip)
+                return ip_formatted
 
 ### Ping
 
