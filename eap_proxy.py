@@ -1,15 +1,9 @@
 #!/usr/bin/env python
 """
-Inspired by 1x_prox as posted here:
-
-    http://www.dslreports.com/forum/r30693618-
-
-    AT&T Residential Gateway Bypass - True bridge mode!
-
 usage: eap_proxy [-h] [--ping-gateway] [--ignore-when-wan-up] [--ignore-start]
-                 [--ignore-logoff] [--restart-dhcp] [--set-mac] [--daemon]
-                 [--pidfile PIDFILE] [--syslog] [--promiscuous] [--debug]
-                 [--debug-packets]
+                 [--ignore-logoff] [--restart-dhcp] [--set-mac]
+                 [--vlan-id VLAN_ID] [--daemon] [--pidfile PIDFILE] [--syslog]
+                 [--promiscuous] [--debug] [--debug-packets]
                  IF_WAN IF_ROUTER
 
 positional arguments:
@@ -20,8 +14,8 @@ optional arguments:
   -h, --help            show this help message and exit
 
 checking whether WAN is up:
-  --ping-gateway        normally the WAN is considered up if IF_WAN.0 has an
-                        IP address; this option additionally requires that
+  --ping-gateway        normally the WAN is considered up if the IF_WAN VLAN
+                        has an address; this option additionally requires that
                         there is a default route gateway that responds to a
                         ping
 
@@ -31,12 +25,13 @@ ignoring router packets:
   --ignore-start        always ignore EAPOL-Start from router
   --ignore-logoff       always ignore EAPOL-Logoff from router
 
-configuring IF_WAN.0 VLAN:
+configuring IF_WAN VLAN:
   --restart-dhcp        check whether WAN is up after receiving EAP-Success on
-                        IF_WAN (see --ping-gateway); if not, restart dhclient
-                        on IF_WAN.0
-  --set-mac             set IF_WAN.0's MAC (ether) address to router's MAC
+                        IF_WAN VLAN (see --ping-gateway); if not, restart
+                        dhclient on IF_WAN VLAN
+  --set-mac             set IF_WAN VLAN MAC (ether) address to router's MAC
                         address
+  --vlan-id VLAN_ID     set IF_WAN VLAN ID (default is 0)
 
 daemonization:
   --daemon              become a daemon; implies --syslog
@@ -586,7 +581,7 @@ class EAPProxy(object):
         if not args.set_mac:
             return
 
-        if_vlan = args.if_wan + ".0"
+        if_vlan = "%s.%d" % (args.if_wan, args.vlan_id)
         if self.os.getmac(if_vlan) == eap.src:
             return
 
@@ -596,7 +591,8 @@ class EAPProxy(object):
     def on_wan_eap(self, eap):
         if not self.should_restart_dhcp(eap):
             return
-        if_vlan = self.args.if_wan + ".0"
+        args = self.args
+        if_vlan = "%s.%d" % (args.if_wan, args.vlan_id)
         self.log.info("%s: restarting dhclient", if_vlan)
         self.os.restart_dhclient(if_vlan)
 
@@ -607,7 +603,7 @@ class EAPProxy(object):
 
     def check_wan_is_up(self):
         args, log = self.args, self.log
-        if_vlan = args.if_wan + ".0"
+        if_vlan = "%s.%d" % (args.if_wan, args.vlan_id)
         ipaddr = getifaddr(if_vlan)
         if ipaddr:
             log.debug("%s: %s", if_vlan, ipaddr)
@@ -640,7 +636,7 @@ def parse_args():
     g = p.add_argument_group("checking whether WAN is up")
     g.add_argument(
         "--ping-gateway", action="store_true", help=
-        "normally the WAN is considered up if IF_WAN.0 has an IP address; "
+        "normally the WAN is considered up if the IF_WAN VLAN has an address; "
         "this option additionally requires that there is a default route "
         "gateway that responds to a ping")
 
@@ -656,15 +652,18 @@ def parse_args():
         "--ignore-logoff", action="store_true", help=
         "always ignore EAPOL-Logoff from router")
 
-    # configuring IF_WAN.0 VLAN options
-    g = p.add_argument_group("configuring IF_WAN.0 VLAN")
+    # configuring IF_WAN VLAN options
+    g = p.add_argument_group("configuring IF_WAN VLAN")
     g.add_argument(
         "--restart-dhcp", action="store_true", help=
-        "check whether WAN is up after receiving EAP-Success on IF_WAN "
-        "(see --ping-gateway); if not, restart dhclient on IF_WAN.0")
+        "check whether WAN is up after receiving EAP-Success on IF_WAN VLAN "
+        "(see --ping-gateway); if not, restart dhclient on IF_WAN VLAN")
     g.add_argument(
         "--set-mac", action="store_true", help=
-        "set IF_WAN.0's MAC (ether) address to router's MAC address")
+        "set IF_WAN VLAN MAC (ether) address to router's MAC address")
+    g.add_argument(
+        "--vlan-id", type=int, default=0, help=
+        "set IF_WAN VLAN ID (default is 0)")
 
     # daemonization options
     g = p.add_argument_group("daemonization")

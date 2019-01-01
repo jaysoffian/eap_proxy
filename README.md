@@ -92,9 +92,9 @@ Good luck. This proxy continues to work well for me. I originally developed it f
 
 ```
 usage: eap_proxy [-h] [--ping-gateway] [--ignore-when-wan-up] [--ignore-start]
-                 [--ignore-logoff] [--restart-dhcp] [--set-mac] [--daemon]
-                 [--pidfile PIDFILE] [--syslog] [--promiscuous] [--debug]
-                 [--debug-packets]
+                 [--ignore-logoff] [--restart-dhcp] [--set-mac]
+                 [--vlan-id VLAN_ID] [--daemon] [--pidfile PIDFILE] [--syslog]
+                 [--promiscuous] [--debug] [--debug-packets]
                  IF_WAN IF_ROUTER
 
 positional arguments:
@@ -105,8 +105,8 @@ optional arguments:
   -h, --help            show this help message and exit
 
 checking whether WAN is up:
-  --ping-gateway        normally the WAN is considered up if IF_WAN.0 has an
-                        IP address; this option additionally requires that
+  --ping-gateway        normally the WAN is considered up if the IF_WAN VLAN
+                        has an address; this option additionally requires that
                         there is a default route gateway that responds to a
                         ping
 
@@ -116,12 +116,13 @@ ignoring router packets:
   --ignore-start        always ignore EAPOL-Start from router
   --ignore-logoff       always ignore EAPOL-Logoff from router
 
-configuring IF_WAN.0 VLAN:
+configuring IF_WAN VLAN:
   --restart-dhcp        check whether WAN is up after receiving EAP-Success on
-                        IF_WAN (see --ping-gateway); if not, restart dhclient
-                        on IF_WAN.0
-  --set-mac             set IF_WAN.0's MAC (ether) address to router's MAC
+                        IF_WAN VLAN (see --ping-gateway); if not, restart
+                        dhclient on IF_WAN VLAN
+  --set-mac             set IF_WAN VLAN MAC (ether) address to router's MAC
                         address
+  --vlan-id VLAN_ID     set IF_WAN VLAN ID (default is 0)
 
 daemonization:
   --daemon              become a daemon; implies --syslog
