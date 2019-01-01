@@ -171,6 +171,8 @@ def getdefaultgatewayaddr():
             if m:
                 hexaddr = m.group(1)
                 octets = (hexaddr[i:i + 2] for i in xrange(0, 7, 2))
+                if sys.byteorder == "little":
+                    octets = reversed(list(octets))
                 ipaddr = '.'.join(str(int(octet, 16)) for octet in octets)
                 return ipaddr
 
