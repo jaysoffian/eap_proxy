@@ -155,22 +155,40 @@ def getifhwaddr(ifname):
     return ''.join(chr(int(x, 16)) for x in octets)
 
 
-def getdefaultgatewayaddr():
-    """Return IP of default route gateway (next hop) in 1.2.3.4 notation
-       or None if there is not default route.
+def getifgateway(ifname):
+    """Return IP of `ifname`'s gateway (next hop) in 1.2.3.4 notation or None
+       if no route exists for `ifname`. If multiple routes exist for `ifname`,
+       the next hop is returned for that with the widest netmask.
     """
-    search = re.compile(r"^\S+\s+00000000\s+([0-9a-fA-F]{8})").search
+    search = re.compile("^" + re.escape(ifname) + r"""\s+
+        [0-9a-fA-F]{8}\s+    # Destination
+        ([0-9a-fA-F]{8})\s+  # Gateway (1)
+        [0-9a-fA-F]+\s+      # Flags
+        [0-9a-fA-F]+\s+      # RefCnt
+        [0-9a-fA-F]+\s+      # Use
+        [0-9a-fA-F]+\s+      # Metric
+        ([0-9a-fA-F]{8})\s+  # Mask    (2)
+        """, re.X).search
+
+    def hex_to_octets(arg):
+        # the order of the hex octets in arg is dependent on host byte order,
+        # but struct.pack handles that when packing into a long.
+        ipaddr = socket.inet_ntoa(struct.pack("=L", int(arg, 16)))
+        return tuple(int(x) for x in ipaddr.split('.'))
+
+    best_gateway, best_mask = None, None
+
     with open("/proc/net/route") as f:
         for line in f:
             m = search(line)
-            if m:
-                hexaddr = m.group(1)
-                octets = (hexaddr[i:i + 2] for i in xrange(0, 7, 2))
-                if sys.byteorder == "little":
-                    octets = reversed(list(octets))
-                ipaddr = '.'.join(str(int(octet, 16)) for octet in octets)
-                return ipaddr
-    return None
+            if not m:
+                continue
+            gateway, mask = hex_to_octets(m.group(1)), hex_to_octets(m.group(2))
+            if gateway == (0, 0, 0, 0):
+                continue
+            if best_mask is None or mask < best_mask:
+                best_gateway, best_mask = gateway, mask
+    return '.'.join(str(x) for x in best_gateway) if best_gateway else None
 
 ### Ping
 
@@ -608,13 +626,13 @@ class EAPProxy(object):
         ipaddr = getifaddr(if_vlan)
         if ipaddr:
             log.debug("%s: %s", if_vlan, ipaddr)
-            return self.ping_gateway() if args.ping_gateway else True
+            return self.ping_wan_gateway() if args.ping_gateway else True
         log.debug("%s: no IP address", if_vlan)
         return False
 
-    def ping_gateway(self):
+    def ping_wan_gateway(self):
         log = self.log
-        ipaddr = getdefaultgatewayaddr()
+        ipaddr = getifgateway(self.args.if_wan)
         if not ipaddr:
             log.debug("ping: no default route gateway")
             return False
