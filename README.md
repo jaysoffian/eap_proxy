@@ -91,10 +91,11 @@ Good luck. This proxy continues to work well for me. I originally developed it f
 ## Usage
 
 ```
-usage: eap_proxy [-h] [--ping-gateway] [--ignore-when-wan-up] [--ignore-start]
-                 [--ignore-logoff] [--restart-dhcp] [--set-mac]
-                 [--vlan-id VLAN_ID] [--daemon] [--pidfile PIDFILE] [--syslog]
-                 [--promiscuous] [--debug] [--debug-packets]
+usage: eap_proxy [-h] [--ping-gateway] [--ping-ip PING_IP]
+                 [--ignore-when-wan-up] [--ignore-start] [--ignore-logoff]
+                 [--restart-dhcp] [--set-mac] [--vlan-id VLAN_ID] [--daemon]
+                 [--pidfile PIDFILE] [--syslog] [--promiscuous] [--debug]
+                 [--debug-packets]
                  IF_WAN IF_ROUTER
 
 positional arguments:
@@ -107,8 +108,11 @@ optional arguments:
 checking whether WAN is up:
   --ping-gateway        normally the WAN is considered up if the IF_WAN VLAN
                         has an address; this option additionally requires that
-                        there is a default route gateway that responds to a
-                        ping
+                        there is a route via IF_WAN with a gateway (next-hop)
+                        that responds to a ping
+  --ping-ip PING_IP     normally the WAN is considered up if the IF_WAN VLAN
+                        has an address; this option additionally requires that
+                        PING_IP responds to a ping
 
 ignoring router packets:
   --ignore-when-wan-up  ignore router packets when WAN is up (see --ping-

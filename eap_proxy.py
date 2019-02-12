@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 """
-usage: eap_proxy [-h] [--ping-gateway] [--ignore-when-wan-up] [--ignore-start]
-                 [--ignore-logoff] [--restart-dhcp] [--set-mac]
-                 [--vlan-id VLAN_ID] [--daemon] [--pidfile PIDFILE] [--syslog]
-                 [--promiscuous] [--debug] [--debug-packets]
+usage: eap_proxy [-h] [--ping-gateway] [--ping-ip PING_IP]
+                 [--ignore-when-wan-up] [--ignore-start] [--ignore-logoff]
+                 [--restart-dhcp] [--set-mac] [--vlan-id VLAN_ID] [--daemon]
+                 [--pidfile PIDFILE] [--syslog] [--promiscuous] [--debug]
+                 [--debug-packets]
                  IF_WAN IF_ROUTER
 
 positional arguments:
@@ -16,8 +17,11 @@ optional arguments:
 checking whether WAN is up:
   --ping-gateway        normally the WAN is considered up if the IF_WAN VLAN
                         has an address; this option additionally requires that
-                        there is a default route gateway that responds to a
-                        ping
+                        there is a route via IF_WAN with a gateway (next-hop)
+                        that responds to a ping
+  --ping-ip PING_IP     normally the WAN is considered up if the IF_WAN VLAN
+                        has an address; this option additionally requires that
+                        PING_IP responds to a ping
 
 ignoring router packets:
   --ignore-when-wan-up  ignore router packets when WAN is up (see --ping-
@@ -626,19 +630,27 @@ class EAPProxy(object):
         ipaddr = getifaddr(if_vlan)
         if ipaddr:
             log.debug("%s: %s", if_vlan, ipaddr)
-            return self.ping_wan_gateway() if args.ping_gateway else True
+            if args.ping_gateway:
+                return self.ping_wan_gateway()
+            if args.ping_ip:
+                return self.ping_ipaddr(args.ping_ip)
+            return True
         log.debug("%s: no IP address", if_vlan)
         return False
 
     def ping_wan_gateway(self):
-        log = self.log
-        ipaddr = getifgateway(self.args.if_wan)
+        if_wan = self.args.if_wan
+        ipaddr = getifgateway(if_wan)
         if not ipaddr:
-            log.debug("ping: no default route gateway")
+            self.log.debug("ping: no gateway for %s", if_wan)
             return False
+        return self.ping_ipaddr(ipaddr)
+
+    def ping_ipaddr(self, ipaddr):
         rv = pingaddr(ipaddr)
-        log.debug("ping: %s %s", ipaddr, "success" if rv else "failed")
+        self.log.debug("ping: %s %s", ipaddr, "success" if rv else "failed")
         return rv
+
 
 ### Main
 
@@ -656,8 +668,12 @@ def parse_args():
     g.add_argument(
         "--ping-gateway", action="store_true", help=
         "normally the WAN is considered up if the IF_WAN VLAN has an address; "
-        "this option additionally requires that there is a default route "
-        "gateway that responds to a ping")
+        "this option additionally requires that there is a route via IF_WAN "
+        "with a gateway (next-hop) that responds to a ping")
+    g.add_argument(
+        "--ping-ip", help=
+        "normally the WAN is considered up if the IF_WAN VLAN has an address; "
+        "this option additionally requires that PING_IP responds to a ping")
 
     # ignoring packet options
     g = p.add_argument_group("ignoring router packets")
@@ -708,6 +724,8 @@ def parse_args():
         "implies --debug")
 
     args = p.parse_args()
+    if args.ping_gateway and args.ping_ip:
+        p.error("--ping-gateway not allowed with --ping-ip")
     if args.daemon:
         args.syslog = True
     if args.debug_packets:
