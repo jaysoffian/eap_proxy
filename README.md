@@ -95,7 +95,7 @@ usage: eap_proxy [-h] [--ping-gateway] [--ping-ip PING_IP]
                  [--ignore-when-wan-up] [--ignore-start] [--ignore-logoff]
                  [--restart-dhcp] [--set-mac] [--vlan-id VLAN_ID] [--daemon]
                  [--pidfile PIDFILE] [--syslog] [--promiscuous] [--debug]
-                 [--debug-packets]
+                 [--debug-packets] [--exit-on-failure] [--drop-root]
                  IF_WAN IF_ROUTER
 
 positional arguments:
@@ -139,4 +139,11 @@ debugging:
   --debug               enable debug-level logging
   --debug-packets       print packets in hex format to assist with debugging;
                         implies --debug
+
+security:
+  --exit-on-failure     exit immediately in case of an unhandled exception;
+                        assumes an external process will restart the script if
+                        needed
+  --drop-root           drop root privileges after opening sockets; implies
+                        --exit-on-failure
 ```

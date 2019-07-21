@@ -4,7 +4,7 @@ usage: eap_proxy [-h] [--ping-gateway] [--ping-ip PING_IP]
                  [--ignore-when-wan-up] [--ignore-start] [--ignore-logoff]
                  [--restart-dhcp] [--set-mac] [--vlan-id VLAN_ID] [--daemon]
                  [--pidfile PIDFILE] [--syslog] [--promiscuous] [--debug]
-                 [--debug-packets]
+                 [--debug-packets] [--exit-on-failure] [--drop-root]
                  IF_WAN IF_ROUTER
 
 positional arguments:
@@ -48,6 +48,13 @@ debugging:
   --debug               enable debug-level logging
   --debug-packets       print packets in hex format to assist with debugging;
                         implies --debug
+
+security:
+  --exit-on-failure     exit immediately in case of an unhandled exception;
+                        assumes an external process will restart the script if
+                        needed
+  --drop-root           drop root privileges after opening sockets; implies
+                        --exit-on-failure
 """
 # pylint:disable=invalid-name,missing-docstring
 import argparse
@@ -55,9 +62,11 @@ import array
 import atexit
 import ctypes
 import ctypes.util
+import grp
 import logging
 import logging.handlers
 import os
+import pwd
 import random
 import re
 import select
@@ -344,6 +353,25 @@ def daemonize():
     os.dup2(nullerr.fileno(), sys.stderr.fileno())
 
 
+def drop_privileges(uid_name='nobody', gid_name='nogroup'):
+    """Drops root privileges. Adapted from:
+    https://stackoverflow.com/a/2699996/166053
+    """
+    # Get the uid/gid from the name
+    running_uid = pwd.getpwnam(uid_name).pw_uid
+    running_gid = grp.getgrnam(gid_name).gr_gid
+
+    # Remove group privileges
+    os.setgroups([])
+
+    # Try setting the new uid/gid
+    os.setgid(running_gid)
+    os.setuid(running_uid)
+
+    # Ensure a very conservative umask
+    os.umask(0o077)
+
+
 def make_logger(use_syslog=False, debug=False):
     """Return new logging.Logger object."""
     if use_syslog:
@@ -537,7 +565,6 @@ class EAPProxy(object):
         log = self.log
         while True:
             try:
-                log.info("proxy_loop starting")
                 self.proxy_loop()
             except KeyboardInterrupt:
                 return
@@ -548,10 +575,14 @@ class EAPProxy(object):
             time.sleep(10)
 
     def proxy_loop(self):
-        args = self.args
+        args, log = self.args, self.log
+        log.info("proxy_loop starting")
         poll = select.poll()  # pylint:disable=no-member
         s_rtr = rawsocket(args.if_rtr, poll=poll, promisc=args.promiscuous)
         s_wan = rawsocket(args.if_wan, poll=poll, promisc=args.promiscuous)
+        if args.drop_root:
+            log.info("dropping root privileges")
+            drop_privileges()
         socks = {s.fileno(): s for s in (s_rtr, s_wan)}
         on_poll_event = partial(self.on_poll_event, s_rtr=s_rtr, s_wan=s_wan)
 
@@ -723,6 +754,17 @@ def parse_args():
         "print packets in hex format to assist with debugging; "
         "implies --debug")
 
+    # security options
+    g = p.add_argument_group("security")
+    g.add_argument(
+        "--exit-on-failure", action="store_true", help=
+        "exit immediately in case of an unhandled exception; assumes an "
+        "external process will restart the script if needed")
+    g.add_argument(
+        "--drop-root", action="store_true", help=
+        "drop root privileges after opening sockets; implies "
+        "--exit-on-failure")
+
     args = p.parse_args()
     if args.ping_gateway and args.ping_ip:
         p.error("--ping-gateway not allowed with --ping-ip")
@@ -732,6 +774,10 @@ def parse_args():
         if args.syslog:
             p.error("--debug-packets not allowed with --syslog")
         args.debug = True
+    if args.drop_root:
+        # if we've dropped root we won't be able re-open the sockets, so we
+        # have to exit if there's a failure.
+        args.exit_on_failure = True
     return args
 
 
@@ -765,7 +811,11 @@ def main():
         except EnvironmentError:  # pylint:disable=broad-except
             log.exception("could not write pidfile: %s", strexc())
 
-    EAPProxy(args, log).proxy_forever()
+    proxy = EAPProxy(args, log)
+    if args.exit_on_failure:
+        proxy.proxy_loop()
+    else:
+        proxy.proxy_forever()
 
 
 if __name__ == "__main__":
