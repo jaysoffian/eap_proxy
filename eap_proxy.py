@@ -96,7 +96,11 @@ class struct_packet_mreq(ctypes.Structure):
         ("mr_address", ctypes.c_ubyte * 8))
 
 
-if_nametoindex = ctypes.CDLL(ctypes.util.find_library('c')).if_nametoindex
+try:
+    # if_nametoindex is available in socket module since Python 3.3
+    if_nametoindex = socket.if_nametoindex
+except AttributeError:
+    if_nametoindex = ctypes.CDLL(ctypes.util.find_library('c')).if_nametoindex
 
 
 def addsockaddr(sock, address):
@@ -248,7 +252,7 @@ def pingaddr(ipaddr, data='', timeout=1.0, strict=False):
 def strbuf(buf):
     """Return `buf` formatted as a hex dump (like tcpdump -xx)."""
     out = []
-    for i in xrange(0, len(buf), 16):
+    for i in range(0, len(buf), 16):
         octets = (ord(x) for x in buf[i:i + 16])
         pairs = []
         for octet in octets:
