@@ -89,6 +89,26 @@ SIOCGIFFLAGS = 0x8913
 SIOCSIFFLAGS = 0x8914
 SOL_PACKET = 263
 
+### Python 2 / 3 compatibility
+
+try:
+    xrange
+except NameError:
+    xrange = range  # pylint:disable=redefined-builtin
+
+
+def tobytes(s, encoding='utf8'):
+    return s if isinstance(s, bytes) else s.encode(encoding)
+
+
+try:
+    if_nametoindex = socket.if_nametoindex  # as of Python 3.3
+except AttributeError:
+    _if_nametoindex = ctypes.CDLL(ctypes.util.find_library('c')).if_nametoindex
+    def if_nametoindex(ifname):
+        return _if_nametoindex(tobytes(ifname))
+
+
 ### Sockets / Network Interfaces
 
 class struct_packet_mreq(ctypes.Structure):
@@ -98,9 +118,6 @@ class struct_packet_mreq(ctypes.Structure):
         ("mr_type", ctypes.c_ushort),
         ("mr_alen", ctypes.c_ushort),
         ("mr_address", ctypes.c_ubyte * 8))
-
-
-if_nametoindex = ctypes.CDLL(ctypes.util.find_library('c')).if_nametoindex
 
 
 def addsockaddr(sock, address):
