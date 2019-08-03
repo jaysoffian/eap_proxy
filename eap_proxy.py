@@ -78,8 +78,8 @@ from fcntl import ioctl
 
 ### Constants
 
-EAP_MULTICAST_ADDR = (0x01, 0x80, 0xc2, 0x00, 0x00, 0x03)
-ETH_P_PAE = 0x888e  # IEEE 802.1X (Port Access Entity)
+EAP_MULTICAST_ADDR = (0x01, 0x80, 0xC2, 0x00, 0x00, 0x03)
+ETH_P_PAE = 0x888E  # IEEE 802.1X (Port Access Entity)
 IFF_PROMISC = 0x100
 PACKET_ADD_MEMBERSHIP = 1
 PACKET_MR_MULTICAST = 0
@@ -97,19 +97,21 @@ except NameError:
     xrange = range  # pylint:disable=redefined-builtin
 
 
-def tobytes(s, encoding='utf8'):
+def tobytes(s, encoding="utf8"):
     return s if isinstance(s, bytes) else s.encode(encoding)
 
 
 try:
     if_nametoindex = socket.if_nametoindex  # as of Python 3.3
 except AttributeError:
-    _if_nametoindex = ctypes.CDLL(ctypes.util.find_library('c')).if_nametoindex
+    _if_nametoindex = ctypes.CDLL(ctypes.util.find_library("c")).if_nametoindex
+
     def if_nametoindex(ifname):
         return _if_nametoindex(tobytes(ifname))
 
 
 ### Sockets / Network Interfaces
+
 
 class struct_packet_mreq(ctypes.Structure):
     # pylint:disable=too-few-public-methods
@@ -117,7 +119,8 @@ class struct_packet_mreq(ctypes.Structure):
         ("mr_ifindex", ctypes.c_int),
         ("mr_type", ctypes.c_ushort),
         ("mr_alen", ctypes.c_ushort),
-        ("mr_address", ctypes.c_ubyte * 8))
+        ("mr_address", ctypes.c_ubyte * 8),
+    )
 
 
 def addsockaddr(sock, address):
@@ -145,7 +148,8 @@ def rawsocket(ifname, promisc=False):
     s = socket.socket(
         socket.PF_PACKET,  # pylint:disable=no-member
         socket.SOCK_RAW,
-        socket.htons(ETH_P_PAE))
+        socket.htons(ETH_P_PAE),
+    )
     s.bind((ifname, 0))
     addsockaddr(s, None if promisc else EAP_MULTICAST_ADDR)
     return s
@@ -173,8 +177,8 @@ def getifhwaddr(ifname):
     """Return MAC address for `ifname` as a packed string."""
     with open("/sys/class/net/%s/address" % ifname) as f:
         s = f.readline()
-    octets = s.split(':')
-    return ''.join(chr(int(x, 16)) for x in octets)
+    octets = s.split(":")
+    return "".join(chr(int(x, 16)) for x in octets)
 
 
 def getifgateway(ifname):
@@ -182,7 +186,10 @@ def getifgateway(ifname):
        if no route exists for `ifname`. If multiple routes exist for `ifname`,
        the next hop is returned for that with the widest netmask.
     """
-    search = re.compile("^" + re.escape(ifname) + r"""\s+
+    search = re.compile(
+        "^"
+        + re.escape(ifname)
+        + r"""\s+
         [0-9a-fA-F]{8}\s+    # Destination
         ([0-9a-fA-F]{8})\s+  # Gateway (1)
         [0-9a-fA-F]+\s+      # Flags
@@ -190,13 +197,15 @@ def getifgateway(ifname):
         [0-9a-fA-F]+\s+      # Use
         [0-9a-fA-F]+\s+      # Metric
         ([0-9a-fA-F]{8})\s+  # Mask    (2)
-        """, re.X).search
+        """,
+        re.X,
+    ).search
 
     def hex_to_octets(arg):
         # the order of the hex octets in arg is dependent on host byte order,
         # but struct.pack handles that when packing into a long.
         ipaddr = socket.inet_ntoa(struct.pack("=L", int(arg, 16)))
-        return tuple(int(x) for x in ipaddr.split('.'))
+        return tuple(int(x) for x in ipaddr.split("."))
 
     best_gateway, best_mask = None, None
 
@@ -210,22 +219,24 @@ def getifgateway(ifname):
                 continue
             if best_mask is None or mask < best_mask:
                 best_gateway, best_mask = gateway, mask
-    return '.'.join(str(x) for x in best_gateway) if best_gateway else None
+    return ".".join(str(x) for x in best_gateway) if best_gateway else None
+
 
 ### Ping
+
 
 def ipchecksum(packet):
     """Return IP checksum of `packet`"""
     # c.f. https://tools.ietf.org/html/rfc1071
-    arr = array.array('H', packet + '\0' if len(packet) % 2 else packet)
+    arr = array.array("H", packet + "\0" if len(packet) % 2 else packet)
     chksum = sum(arr)
-    chksum = (chksum >> 16) + (chksum & 0xffff)  # add high and low 16 bits
+    chksum = (chksum >> 16) + (chksum & 0xFFFF)  # add high and low 16 bits
     chksum += chksum >> 16  # add carry
-    chksum = ~chksum & 0xffff  # invert and truncate
+    chksum = ~chksum & 0xFFFF  # invert and truncate
     return socket.htons(chksum)  # per RFC 1071
 
 
-def pingaddr(ipaddr, data='', timeout=1.0, strict=False):
+def pingaddr(ipaddr, data="", timeout=1.0, strict=False):
     """Return True if `ipaddr` replies to an ICMP ECHO request within
        `timeout` seconds else False. Provide optional `data` to include in
        the request. Any reply from `ipaddr` will suffice. Use `strict` to
@@ -236,8 +247,8 @@ def pingaddr(ipaddr, data='', timeout=1.0, strict=False):
     if len(data) > 2000:
         raise ValueError("data too large")
     icmp_struct = struct.Struct("!BBHHH")
-    echoid = os.getpid() & 0xffff
-    seqnum = random.randint(0, 0xffff)
+    echoid = os.getpid() & 0xFFFF
+    seqnum = random.randint(0, 0xFFFF)
     chksum = ipchecksum(icmp_struct.pack(8, 0, 0, echoid, seqnum) + data)
     packet = icmp_struct.pack(8, 0, chksum, echoid, seqnum) + data
     # send it and check reply
@@ -261,24 +272,26 @@ def pingaddr(ipaddr, data='', timeout=1.0, strict=False):
             return True
     return False
 
+
 ### Helpers
+
 
 def strbuf(buf):
     """Return `buf` formatted as a hex dump (like tcpdump -xx)."""
     out = []
     for i in xrange(0, len(buf), 16):
-        octets = (ord(x) for x in buf[i:i + 16])
+        octets = (ord(x) for x in buf[i : i + 16])
         pairs = []
         for octet in octets:
-            pad = '' if len(pairs) % 2 else ' '
+            pad = "" if len(pairs) % 2 else " "
             pairs.append("%s%02x" % (pad, octet))
-        out.append("0x%04x: %s" % (i, '' .join(pairs)))
-    return '\n'.join(out)
+        out.append("0x%04x: %s" % (i, "".join(pairs)))
+    return "\n".join(out)
 
 
 def strmac(mac):
     """Return packed string `mac` formatted like aa:bb:cc:dd:ee:ff."""
-    return ':'.join("%02x" % ord(b) for b in mac[:6])
+    return ":".join("%02x" % ord(b) for b in mac[:6])
 
 
 def strexc():
@@ -288,15 +301,19 @@ def strexc():
     try:
         exc_type, exc_value, tb = sys.exc_info()
         if exc_type is None:
-            return ''
+            return ""
         # find last frame in this script
-        lineno, func = 0, ''
+        lineno, func = 0, ""
         for frame in traceback.extract_tb(tb):
             if frame[0] != __file__:
                 break
             lineno, func = frame[1:3]
         return "exception in %s line %s (%s: %s)" % (
-            func, lineno, exc_type.__name__, exc_value)
+            func,
+            lineno,
+            exc_type.__name__,
+            exc_value,
+        )
     finally:
         del tb
 
@@ -331,7 +348,7 @@ def safe_unlink(path):
 
 def writepidfile(pidfile):
     """Write current pid to `pidfile`."""
-    with open(pidfile, 'w') as f:
+    with open(pidfile, "w") as f:
         f.write("%s\n" % os.getpid())
 
     # NOTE: called on normal Python exit, but not on SIGTERM.
@@ -354,15 +371,15 @@ def daemonize():
         sys.exit(0)
     sys.stdout.flush()
     sys.stderr.flush()
-    nullin = open('/dev/null', 'r')
-    nullout = open('/dev/null', 'a+')
-    nullerr = open('/dev/null', 'a+', 0)
+    nullin = open("/dev/null", "r")
+    nullout = open("/dev/null", "a+")
+    nullerr = open("/dev/null", "a+", 0)
     os.dup2(nullin.fileno(), sys.stdin.fileno())
     os.dup2(nullout.fileno(), sys.stdout.fileno())
     os.dup2(nullerr.fileno(), sys.stderr.fileno())
 
 
-def run_as(username, groupname=''):
+def run_as(username, groupname=""):
     """Switch process to run as `username` and optionally `groupname`."""
     pw = pwd.getpwnam(username)
     uid = pw.pw_uid
@@ -379,7 +396,7 @@ def make_logger(use_syslog=False, debug=False):
     """Return new logging.Logger object."""
     if use_syslog:
         formatter = logging.Formatter("eap_proxy[%(process)d]: %(message)s")
-        formatter.formatException = lambda *__: ''  # no stack trace to syslog
+        formatter.formatException = lambda *__: ""  # no stack trace to syslog
         SysLogHandler = logging.handlers.SysLogHandler
         handler = SysLogHandler("/dev/log", facility=SysLogHandler.LOG_LOCAL7)
         handler.setFormatter(formatter)
@@ -396,6 +413,7 @@ def make_logger(use_syslog=False, debug=False):
     logger.addHandler(handler)
     return logger
 
+
 ### EdgeOS
 
 
@@ -411,8 +429,7 @@ class EdgeOS(object):
             return ex.returncode, ex.output
 
     def run_vyatta_interfaces(self, name, *args):
-        self.run(
-            "/opt/vyatta/sbin/vyatta-interfaces.pl", "--dev", name, *args)
+        self.run("/opt/vyatta/sbin/vyatta-interfaces.pl", "--dev", name, *args)
 
     def restart_dhclient(self, name):
         # This isn't working:
@@ -427,22 +444,18 @@ class EdgeOS(object):
     @staticmethod
     def dhclient_pathnames(ifname):
         """Return tuple of (-cf, -pf, and -lf) arg values for dhclient."""
-        filename = ifname.replace('.', '_')
+        filename = ifname.replace(".", "_")
         return (
-            "/var/run/dhclient_%s.conf" % filename,    # -cf
-            "/var/run/dhclient_%s.pid" % filename,     # -pf
-            "/var/run/dhclient_%s.leases" % filename)  # -lf
+            "/var/run/dhclient_%s.conf" % filename,  # -cf
+            "/var/run/dhclient_%s.pid" % filename,  # -pf
+            "/var/run/dhclient_%s.leases" % filename,
+        )  # -lf
 
     def stop_dhclient(self, ifname):
         """Stop dhclient on `ifname` interface."""
         # Emulates vyatta-interfaces.pl's behavior
         cf, pf, lf = self.dhclient_pathnames(ifname)
-        self.run(
-            "/sbin/dhclient", "-q",
-            "-cf", cf,
-            "-pf", pf,
-            "-lf", lf,
-            "-r", ifname)
+        self.run("/sbin/dhclient", "-q", "-cf", cf, "-pf", pf, "-lf", lf, "-r", ifname)
         safe_unlink(pf)
 
     def start_dhclient(self, ifname):
@@ -451,12 +464,7 @@ class EdgeOS(object):
         cf, pf, lf = self.dhclient_pathnames(ifname)
         killpidfile(pf, signal.SIGTERM)
         safe_unlink(pf)
-        self.run(
-            "/sbin/dhclient", "-q", "-nw",
-            "-cf", cf,
-            "-pf", pf,
-            "-lf", lf,
-            ifname)
+        self.run("/sbin/dhclient", "-q", "-nw", "-cf", cf, "-pf", pf, "-lf", lf, ifname)
 
     def setmac(self, ifname, mac):
         """Set interface `ifname` mac to `mac`, which may be either a packed
@@ -471,8 +479,10 @@ class EdgeOS(object):
         """Return MAC address for `ifname` as a packed string."""
         return getifhwaddr(ifname)
 
+
 ### EAP frame/packet decoding
 # c.f. https://github.com/the-tcpdump-group/tcpdump/blob/master/print-eap.c
+
 
 class EAPFrame(namedtuple("EAPFrame", "dst src version type length packet")):
     __slots__ = ()
@@ -487,7 +497,7 @@ class EAPFrame(namedtuple("EAPFrame", "dst src version type length packet")):
         TYPE_START: "EAPOL start",
         TYPE_LOGOFF: "EAPOL logoff",
         TYPE_KEY: "EAPOL key",
-        TYPE_ENCAP_ASF_ALERT: "Encapsulated ASF alert"
+        TYPE_ENCAP_ASF_ALERT: "Encapsulated ASF alert",
     }
 
     @classmethod
@@ -497,7 +507,7 @@ class EAPFrame(namedtuple("EAPFrame", "dst src version type length packet")):
         if etype != ETH_P_PAE:
             raise ValueError("invalid ethernet type: 0x%04x" % etype)
         if ptype == cls.TYPE_PACKET:
-            packet = EAPPacket.from_buf(buf[size:size + length])
+            packet = EAPPacket.from_buf(buf[size : size + length])
         else:
             packet = None
         return cls(dst, src, ver, ptype, length, packet)
@@ -520,9 +530,14 @@ class EAPFrame(namedtuple("EAPFrame", "dst src version type length packet")):
 
     def __str__(self):
         return "%s > %s, %s (%d) v%d, len %d%s" % (
-            strmac(self.src), strmac(self.dst),
-            self.type_name, self.type, self.version, self.length,
-            ", " + str(self.packet) if self.packet else '')
+            strmac(self.src),
+            strmac(self.dst),
+            self.type_name,
+            self.type,
+            self.version,
+            self.length,
+            ", " + str(self.packet) if self.packet else "",
+        )
 
 
 class EAPPacket(namedtuple("EAPPacket", "code id length data")):
@@ -533,14 +548,14 @@ class EAPPacket(namedtuple("EAPPacket", "code id length data")):
         REQUEST: "Request",
         RESPONSE: "Response",
         SUCCESS: "Success",
-        FAILURE: "Failure"
+        FAILURE: "Failure",
     }
 
     @classmethod
     def from_buf(cls, buf):
         unpack, size = cls._struct.unpack, cls._struct.size
         code, id_, length = unpack(buf[:size])
-        data = buf[size:size + length - 4]
+        data = buf[size : size + length - 4]
         return cls(code, id_, length, data)
 
     @property
@@ -553,12 +568,18 @@ class EAPPacket(namedtuple("EAPPacket", "code id length data")):
 
     def __str__(self):
         return "%s (%d) id %d, len %d [%d]" % (
-            self.code_name, self.code, self.id, self.length, len(self.data))
+            self.code_name,
+            self.code,
+            self.id,
+            self.length,
+            len(self.data),
+        )
+
 
 ### EAP Proxy
 
-class EAPProxy(object):
 
+class EAPProxy(object):
     def __init__(self, args, log):
         self.args = args
         self.os = EdgeOS(log)
@@ -603,7 +624,6 @@ class EAPProxy(object):
         log.info("%s: %s > %s", ifname, eap, getifname(sock_out))
         nbytes = sock_out.send(buf)
         log.debug("%s: sent %d bytes", getifname(sock_out), nbytes)
-
 
     def should_ignore_router_eap(self, eap):
         args = self.args
@@ -670,79 +690,96 @@ class EAPProxy(object):
 
 ### Main
 
+
 def parse_args():
     p = argparse.ArgumentParser("eap_proxy")
 
     # interface arguments
-    p.add_argument(
-        "if_wan", metavar="IF_WAN", help="interface of the AT&T ONT/WAN")
-    p.add_argument(
-        "if_rtr", metavar="IF_ROUTER", help="interface of the AT&T router")
+    p.add_argument("if_wan", metavar="IF_WAN", help="interface of the AT&T ONT/WAN")
+    p.add_argument("if_rtr", metavar="IF_ROUTER", help="interface of the AT&T router")
 
     # checking whether WAN is up
     g = p.add_argument_group("checking whether WAN is up")
     g.add_argument(
-        "--ping-gateway", action="store_true", help=
-        "normally the WAN is considered up if the IF_WAN VLAN has an address; "
+        "--ping-gateway",
+        action="store_true",
+        help="normally the WAN is considered up if the IF_WAN VLAN has an address; "
         "this option additionally requires that there is a route via IF_WAN "
-        "with a gateway (next-hop) that responds to a ping")
+        "with a gateway (next-hop) that responds to a ping",
+    )
     g.add_argument(
-        "--ping-ip", help=
-        "normally the WAN is considered up if the IF_WAN VLAN has an address; "
-        "this option additionally requires that PING_IP responds to a ping")
+        "--ping-ip",
+        help="normally the WAN is considered up if the IF_WAN VLAN has an address; "
+        "this option additionally requires that PING_IP responds to a ping",
+    )
 
     # ignoring packet options
     g = p.add_argument_group("ignoring router packets")
     g.add_argument(
-        "--ignore-when-wan-up", action="store_true", help=
-        "ignore router packets when WAN is up (see --ping-gateway)")
+        "--ignore-when-wan-up",
+        action="store_true",
+        help="ignore router packets when WAN is up (see --ping-gateway)",
+    )
     g.add_argument(
-        "--ignore-start", action="store_true", help=
-        "always ignore EAPOL-Start from router")
+        "--ignore-start",
+        action="store_true",
+        help="always ignore EAPOL-Start from router",
+    )
     g.add_argument(
-        "--ignore-logoff", action="store_true", help=
-        "always ignore EAPOL-Logoff from router")
+        "--ignore-logoff",
+        action="store_true",
+        help="always ignore EAPOL-Logoff from router",
+    )
 
     # configuring IF_WAN VLAN options
     g = p.add_argument_group("configuring IF_WAN VLAN")
     g.add_argument(
-        "--restart-dhcp", action="store_true", help=
-        "check whether WAN is up after receiving EAP-Success on IF_WAN VLAN "
-        "(see --ping-gateway); if not, restart dhclient on IF_WAN VLAN")
+        "--restart-dhcp",
+        action="store_true",
+        help="check whether WAN is up after receiving EAP-Success on IF_WAN VLAN "
+        "(see --ping-gateway); if not, restart dhclient on IF_WAN VLAN",
+    )
     g.add_argument(
-        "--set-mac", action="store_true", help=
-        "set IF_WAN VLAN MAC (ether) address to router's MAC address")
+        "--set-mac",
+        action="store_true",
+        help="set IF_WAN VLAN MAC (ether) address to router's MAC address",
+    )
     g.add_argument(
-        "--vlan-id", type=int, default=0, help=
-        "set IF_WAN VLAN ID (default is 0)")
+        "--vlan-id", type=int, default=0, help="set IF_WAN VLAN ID (default is 0)"
+    )
 
     # process management options
     g = p.add_argument_group("process management")
     g.add_argument(
-        "--daemon", action="store_true", help=
-        "fork into background and attempt to run forever until killed; "
-        "implies --syslog")
+        "--daemon",
+        action="store_true",
+        help="fork into background and attempt to run forever until killed; "
+        "implies --syslog",
+    )
     g.add_argument("--pidfile", help="record pid to PIDFILE")
     g.add_argument(
-        "--syslog", action="store_true", help=
-        "log to syslog instead of stderr")
+        "--syslog", action="store_true", help="log to syslog instead of stderr"
+    )
     g.add_argument(
-        "--run-as", metavar="USER[:GROUP]", help=
-        "switch to USER[:GROUP] after opening sockets; "
-        "incompatible with --daemon")
+        "--run-as",
+        metavar="USER[:GROUP]",
+        help="switch to USER[:GROUP] after opening sockets; "
+        "incompatible with --daemon",
+    )
 
     # debugging options
     g = p.add_argument_group("debugging")
     g.add_argument(
-        "--promiscuous", action="store_true", help=
-        "place interfaces into promiscuous mode instead of multicast")
+        "--promiscuous",
+        action="store_true",
+        help="place interfaces into promiscuous mode instead of multicast",
+    )
+    g.add_argument("--debug", action="store_true", help="enable debug-level logging")
     g.add_argument(
-        "--debug", action="store_true", help=
-        "enable debug-level logging")
-    g.add_argument(
-        "--debug-packets", action="store_true", help=
-        "print packets in hex format to assist with debugging; "
-        "implies --debug")
+        "--debug-packets",
+        action="store_true",
+        help="print packets in hex format to assist with debugging; " "implies --debug",
+    )
 
     args = p.parse_args()
     if args.ping_gateway and args.ping_ip:
