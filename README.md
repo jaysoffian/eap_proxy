@@ -6,7 +6,7 @@ Proxy EAP packets between network interfaces. Compatible with:
 - UniFi® Security Gateway
 - Generic Linux systems
 
-Inspired by `1x_prox` posted to the [AT&T Residential Gateway Bypass - True bridge mode!](http://www.dslreports.com/forum/r30693618-) discussion.
+Inspired by [`1x_prox`](http://www.dslreports.com/forum/r30693618-) posted to the “[AT&T Residential Gateway Bypass - True bridge mode!](https://www.dslreports.com/forum/r29903721-AT-T-Residential-Gateway-Bypass-True-bridge-mode)” discussion in the “AT&T U-verse” DSLReports forum.
 
 ## Instructions (EdgeRouter)
 
