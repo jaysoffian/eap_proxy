@@ -10,9 +10,13 @@ AT&T Residential Gateway Bypass - True bridge mode!
 
 ## Instructions (EdgeRouter)
 
-- Copy `eap_proxy.sh` to `/config/scripts/post-config.d/eap_proxy.sh`
-- Copy `eap_proxy.py` to `/config/scripts/eap_proxy.py`
-- Adjust the settings in `eap_proxy.sh` as appropriate per the usage instructions below.
+1. Copy `eap_proxy.sh.example` to `eap_proxy.sh`.
+2. Set `IF_WAN` and `IF_ROUTER` for your router's interfaces. The `CONFIG_OPTIONS` and `DAEMON_OPTIONS` should not normally need adjusting.
+3. Either:
+  - Run `copy_to_router.sh <name_of_your_router>`
+  - Or
+      - Copy `eap_proxy.sh` to `/config/scripts/post-config.d/eap_proxy.sh` and
+      - Copy `eap_proxy.py` to `/config/scripts/eap_proxy.py`
 
 ## Instructions (USG)
 
