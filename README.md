@@ -1,6 +1,10 @@
 # eap_proxy
 
-Proxy EAP packets between interfaces on Ubiquiti Networks EdgeRouter™ products. Also works with UniFi® Security Gateway.
+Proxy EAP packets between network interfaces. Compatible with:
+
+- Ubiquiti Networks EdgeRouter™ products
+- UniFi® Security Gateway
+- Generic Linux systems
 
 Inspired by 1x_prox as posted here:
 
@@ -21,6 +25,10 @@ AT&T Residential Gateway Bypass - True bridge mode!
 ## Instructions (USG)
 
 Please see <https://blog.taylorsmith.xyz/att-uverse-modem-bypass-unifi-usg/>
+
+## Instruction (Generic Linux)
+
+Sorry, you're on your own for now, but see [#21](https://github.com/jaysoffian/eap_proxy/issues/21) for hints.
 
 ## EdgeRouter Sample Configuration
 
