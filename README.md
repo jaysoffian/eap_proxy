@@ -98,8 +98,8 @@ Good luck. This proxy continues to work well for me. I originally developed it f
 usage: eap_proxy [-h] [--ping-gateway] [--ping-ip PING_IP]
                  [--ignore-when-wan-up] [--ignore-start] [--ignore-logoff]
                  [--restart-dhcp] [--set-mac] [--vlan-id VLAN_ID] [--daemon]
-                 [--pidfile PIDFILE] [--syslog] [--promiscuous] [--debug]
-                 [--debug-packets]
+                 [--pidfile PIDFILE] [--syslog] [--run-as USER[:GROUP]]
+                 [--promiscuous] [--debug] [--debug-packets]
                  IF_WAN IF_ROUTER
 
 positional arguments:
@@ -132,10 +132,14 @@ configuring IF_WAN VLAN:
                         address
   --vlan-id VLAN_ID     set IF_WAN VLAN ID (default is 0)
 
-daemonization:
-  --daemon              become a daemon; implies --syslog
+process management:
+  --daemon              fork into background and attempt to run forever until
+                        killed; implies --syslog
   --pidfile PIDFILE     record pid to PIDFILE
   --syslog              log to syslog instead of stderr
+  --run-as USER[:GROUP]
+                        switch to USER[:GROUP] after opening sockets;
+                        incompatible with --daemon
 
 debugging:
   --promiscuous         place interfaces into promiscuous mode instead of

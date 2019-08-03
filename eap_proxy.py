@@ -3,8 +3,8 @@
 usage: eap_proxy [-h] [--ping-gateway] [--ping-ip PING_IP]
                  [--ignore-when-wan-up] [--ignore-start] [--ignore-logoff]
                  [--restart-dhcp] [--set-mac] [--vlan-id VLAN_ID] [--daemon]
-                 [--pidfile PIDFILE] [--syslog] [--promiscuous] [--debug]
-                 [--debug-packets]
+                 [--pidfile PIDFILE] [--syslog] [--run-as USER[:GROUP]]
+                 [--promiscuous] [--debug] [--debug-packets]
                  IF_WAN IF_ROUTER
 
 positional arguments:
@@ -37,10 +37,14 @@ configuring IF_WAN VLAN:
                         address
   --vlan-id VLAN_ID     set IF_WAN VLAN ID (default is 0)
 
-daemonization:
-  --daemon              become a daemon; implies --syslog
+process management:
+  --daemon              fork into background and attempt to run forever until
+                        killed; implies --syslog
   --pidfile PIDFILE     record pid to PIDFILE
   --syslog              log to syslog instead of stderr
+  --run-as USER[:GROUP]
+                        switch to USER[:GROUP] after opening sockets;
+                        incompatible with --daemon
 
 debugging:
   --promiscuous         place interfaces into promiscuous mode instead of
@@ -58,6 +62,7 @@ import ctypes.util
 import logging
 import logging.handlers
 import os
+import pwd, grp  # pylint:disable=multiple-imports
 import random
 import re
 import select
@@ -70,7 +75,6 @@ import time
 import traceback
 from collections import namedtuple
 from fcntl import ioctl
-from functools import partial
 
 ### Constants
 
@@ -116,11 +120,10 @@ def addsockaddr(sock, address):
     sock.setsockopt(SOL_PACKET, PACKET_ADD_MEMBERSHIP, mreq)
 
 
-def rawsocket(ifname, poll=None, promisc=False):
+def rawsocket(ifname, promisc=False):
     """Return raw socket listening for 802.1X packets on `ifname` interface.
        The socket is configured for multicast mode on EAP_MULTICAST_ADDR.
        Specify `promisc` to enable promiscuous mode instead.
-       Provide `poll` object to register socket to it POLLIN events.
     """
     s = socket.socket(
         socket.PF_PACKET,  # pylint:disable=no-member
@@ -128,8 +131,6 @@ def rawsocket(ifname, poll=None, promisc=False):
         socket.htons(ETH_P_PAE))
     s.bind((ifname, 0))
     addsockaddr(s, None if promisc else EAP_MULTICAST_ADDR)
-    if poll is not None:
-        poll.register(s, select.POLLIN)  # pylint:disable=no-member
     return s
 
 
@@ -344,6 +345,19 @@ def daemonize():
     os.dup2(nullerr.fileno(), sys.stderr.fileno())
 
 
+def run_as(username, groupname=''):
+    """Switch process to run as `username` and optionally `groupname`."""
+    pw = pwd.getpwnam(username)
+    uid = pw.pw_uid
+    if groupname:
+        gid = grp.getgrnam(groupname).gr_gid
+    else:
+        gid = pw.pw_gid
+    os.setgroups([])
+    os.setgid(gid)
+    os.setuid(uid)
+
+
 def make_logger(use_syslog=False, debug=False):
     """Return new logging.Logger object."""
     if use_syslog:
@@ -532,35 +546,20 @@ class EAPProxy(object):
         self.args = args
         self.os = EdgeOS(log)
         self.log = log
-
-    def proxy_forever(self):
-        log = self.log
-        while True:
-            try:
-                log.info("proxy_loop starting")
-                self.proxy_loop()
-            except KeyboardInterrupt:
-                return
-            except Exception as ex:  # pylint:disable=broad-except
-                log.warn("%s; restarting in 10 seconds", strexc(), exc_info=ex)
-            else:
-                log.warn("proxy_loop exited; restarting in 10 seconds")
-            time.sleep(10)
+        self.s_rtr = rawsocket(args.if_rtr, promisc=args.promiscuous)
+        self.s_wan = rawsocket(args.if_wan, promisc=args.promiscuous)
 
     def proxy_loop(self):
-        args = self.args
-        poll = select.poll()  # pylint:disable=no-member
-        s_rtr = rawsocket(args.if_rtr, poll=poll, promisc=args.promiscuous)
-        s_wan = rawsocket(args.if_wan, poll=poll, promisc=args.promiscuous)
-        socks = {s.fileno(): s for s in (s_rtr, s_wan)}
-        on_poll_event = partial(self.on_poll_event, s_rtr=s_rtr, s_wan=s_wan)
-
+        poll = select.poll()
+        poll.register(self.s_rtr, select.POLLIN)  # pylint:disable=no-member
+        poll.register(self.s_wan, select.POLLIN)  # pylint:disable=no-member
+        socks = {s.fileno(): s for s in (self.s_rtr, self.s_wan)}
         while True:
             ready = poll.poll()
             for fd, event in ready:
-                on_poll_event(socks[fd], event)
+                self.on_poll_event(socks[fd], event)
 
-    def on_poll_event(self, sock_in, event, s_rtr, s_wan):
+    def on_poll_event(self, sock_in, event):
         log = self.log
         ifname = getifname(sock_in)
         if event != select.POLLIN:  # pylint:disable=no-member
@@ -574,14 +573,14 @@ class EAPProxy(object):
         eap = EAPFrame.from_buf(buf)
         log.debug("%s: %s", ifname, eap)
 
-        if sock_in == s_rtr:
-            sock_out = s_wan
+        if sock_in == self.s_rtr:
+            sock_out = self.s_wan
             self.on_router_eap(eap)
             if self.should_ignore_router_eap(eap):
                 log.debug("%s: ignoring %s", ifname, eap)
                 return
         else:
-            sock_out = s_rtr
+            sock_out = self.s_rtr
             self.on_wan_eap(eap)
 
         log.info("%s: %s > %s", ifname, eap, getifname(sock_out))
@@ -700,15 +699,20 @@ def parse_args():
         "--vlan-id", type=int, default=0, help=
         "set IF_WAN VLAN ID (default is 0)")
 
-    # daemonization options
-    g = p.add_argument_group("daemonization")
+    # process management options
+    g = p.add_argument_group("process management")
     g.add_argument(
         "--daemon", action="store_true", help=
-        "become a daemon; implies --syslog")
+        "fork into background and attempt to run forever until killed; "
+        "implies --syslog")
     g.add_argument("--pidfile", help="record pid to PIDFILE")
     g.add_argument(
         "--syslog", action="store_true", help=
         "log to syslog instead of stderr")
+    g.add_argument(
+        "--run-as", metavar="USER[:GROUP]", help=
+        "switch to USER[:GROUP] after opening sockets; "
+        "incompatible with --daemon")
 
     # debugging options
     g = p.add_argument_group("debugging")
@@ -726,6 +730,11 @@ def parse_args():
     args = p.parse_args()
     if args.ping_gateway and args.ping_ip:
         p.error("--ping-gateway not allowed with --ping-ip")
+    if args.run_as:
+        if args.daemon:
+            p.error("--run-as not allowed with --daemon")
+        user, __, group = args.run_as.partition(":")
+        args.run_as = (user, group)
     if args.daemon:
         args.syslog = True
     if args.debug_packets:
@@ -733,6 +742,27 @@ def parse_args():
             p.error("--debug-packets not allowed with --syslog")
         args.debug = True
     return args
+
+
+def run_proxy_once(args, log):
+    proxy = EAPProxy(args, log)
+    if args.run_as:
+        run_as(*args.run_as)
+    log.info("starting proxy_loop")
+    proxy.proxy_loop()
+
+
+def run_proxy_forever(args, log):
+    while True:
+        try:
+            run_proxy_once(args, log)
+        except KeyboardInterrupt:
+            return 0
+        except Exception as ex:  # pylint:disable=broad-except
+            log.warn("%s; restarting in 10 seconds", strexc(), exc_info=ex)
+        else:
+            log.warn("proxy_loop exited; restarting in 10 seconds")
+        time.sleep(10)
 
 
 def main():
@@ -765,7 +795,8 @@ def main():
         except EnvironmentError:  # pylint:disable=broad-except
             log.exception("could not write pidfile: %s", strexc())
 
-    EAPProxy(args, log).proxy_forever()
+    run_proxy = run_proxy_forever if args.daemon else run_proxy_once
+    run_proxy(args, log)
 
 
 if __name__ == "__main__":
