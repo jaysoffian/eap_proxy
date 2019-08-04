@@ -383,10 +383,7 @@ def run_as(username, groupname=""):
     """Switch process to run as `username` and optionally `groupname`."""
     pw = pwd.getpwnam(username)
     uid = pw.pw_uid
-    if groupname:
-        gid = grp.getgrnam(groupname).gr_gid
-    else:
-        gid = pw.pw_gid
+    gid = grp.getgrnam(groupname).gr_gid if groupname else pw.pw_gid
     os.setgroups([])
     os.setgid(gid)
     os.setuid(uid)
@@ -798,18 +795,24 @@ def parse_args():
     return args
 
 
-def run_proxy_once(args, log):
+def proxy_loop(args, log):
     proxy = EAPProxy(args, log)
     if args.run_as:
-        run_as(*args.run_as)
+        try:
+            run_as(*args.run_as)
+            log.debug("running as uid:gid %d:%d" % (os.getuid(), os.getgid()))
+        except Exception:  # pylint:disable=broad-except
+            log.exception("could not switch user/group: %s", strexc())
+            return 1
     log.info("starting proxy_loop")
     proxy.proxy_loop()
+    return 0
 
 
-def run_proxy_forever(args, log):
+def proxy_loop_forever(args, log):
     while True:
         try:
-            run_proxy_once(args, log)
+            proxy_loop(args, log)
         except KeyboardInterrupt:
             return 0
         except Exception as ex:  # pylint:disable=broad-except
@@ -849,8 +852,8 @@ def main():
         except EnvironmentError:  # pylint:disable=broad-except
             log.exception("could not write pidfile: %s", strexc())
 
-    run_proxy = run_proxy_forever if args.daemon else run_proxy_once
-    run_proxy(args, log)
+    proxy = proxy_loop_forever if args.daemon else proxy_loop
+    return proxy(args, log)
 
 
 if __name__ == "__main__":
