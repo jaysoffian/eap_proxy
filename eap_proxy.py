@@ -91,14 +91,16 @@ SOL_PACKET = 263
 
 ### Python 2 / 3 compatibility
 
+PY3 = sys.version_info[0] == 3
+
 try:
     xrange
 except NameError:
     xrange = range  # pylint:disable=redefined-builtin
 
 
-def tobytes(s, encoding="utf8"):
-    return s if isinstance(s, bytes) else s.encode(encoding)
+def to_utf8(s):
+    return s if isinstance(s, bytes) else s.encode("utf8")
 
 
 try:
@@ -107,7 +109,7 @@ except AttributeError:
     _if_nametoindex = ctypes.CDLL(ctypes.util.find_library("c")).if_nametoindex
 
     def if_nametoindex(ifname):
-        return _if_nametoindex(tobytes(ifname))
+        return _if_nametoindex(to_utf8(ifname))
 
 
 ### Sockets / Network Interfaces
@@ -279,8 +281,9 @@ def pingaddr(ipaddr, data="", timeout=1.0, strict=False):
 def strbuf(buf):
     """Return `buf` formatted as a hex dump (like tcpdump -xx)."""
     out = []
+    tobyte = (lambda x: x) if (PY3 and isinstance(buf, bytes)) else ord
     for i in xrange(0, len(buf), 16):
-        octets = (ord(x) for x in buf[i : i + 16])
+        octets = (tobyte(x) for x in buf[i : i + 16])
         pairs = []
         for octet in octets:
             pad = "" if len(pairs) % 2 else " "
@@ -291,7 +294,8 @@ def strbuf(buf):
 
 def strmac(mac):
     """Return packed string `mac` formatted like aa:bb:cc:dd:ee:ff."""
-    return ":".join("%02x" % ord(b) for b in mac[:6])
+    tobyte = (lambda x: x) if (PY3 and isinstance(mac, bytes)) else ord
+    return ":".join("%02x" % tobyte(b) for b in mac[:6])
 
 
 def strexc():
