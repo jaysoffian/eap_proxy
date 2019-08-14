@@ -94,7 +94,12 @@ If you aren't already using `dnsmasq` for DHCP, you might want to use `radvd` in
 
 For configuring IPv6 in areas that are on native dual-stack, please see the discussion in https://github.com/jaysoffian/eap_proxy/issues/3. FWIW, though I was able to get IPv6 to work correctly, I eventually disabled it for a couple reasons. First, AT&T's IPv6 network was flakey for me, and sometimes sites would randomly become unreachable. Second, even when IPv6 was working correctly, the latency for me to many sites was always significantly higher than over IPv4. YMMV.
 
-Good luck. This proxy continues to work well for me. I originally developed it for use on an EdgeRouter Lite running EdgeOS v1.9.1.1. As of Sep 2018, I'm using it on an EdgeRouter 4 running EdgeOS v1.10.5. I know that it has also been used successfully on the ER-X and USG.
+Good luck. This proxy continues to work well for me.
+
+Known good configurations:
+EdgeRouter Lite running EdgeOS v1.9.1.1
+EdgeRouter 4 running EdgeOS v1.10.5
+USG 3P running firmware version 4.4.44.5213844
 
 ## Usage
 
