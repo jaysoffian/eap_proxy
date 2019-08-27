@@ -98,7 +98,7 @@ Good luck. This proxy continues to work well for me.
 
 Known good configurations:
 EdgeRouter Lite running EdgeOS v1.9.1.1
-EdgeRouter 4 running EdgeOS v1.10.5
+EdgeRouter 4 running EdgeOS v1.10.5 and v2.0.6
 USG 3P running firmware version 4.4.44.5213844
 
 ## Usage
