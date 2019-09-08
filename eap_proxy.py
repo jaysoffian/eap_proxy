@@ -581,6 +581,12 @@ class EAPPacket(namedtuple("EAPPacket", "code id length data")):
 
 
 class EAPProxy(object):
+    _poll_events = {
+        select.POLLERR: "POLLERR",
+        select.POLLHUP: "POLLHUP",
+        select.POLLNVAL: "POLLNVAL",
+    }
+
     def __init__(self, args, log):
         self.args = args
         self.os = EdgeOS(log)
@@ -602,7 +608,10 @@ class EAPProxy(object):
         log = self.log
         ifname = getifname(sock_in)
         if event != select.POLLIN:  # pylint:disable=no-member
-            raise IOError("[%s] unexpected poll event: %d" % (ifname, event))
+            ename = self._poll_events.get(event, "???")
+            raise IOError(
+                "[%s] unexpected poll event: %s (%d)" % (ifname, ename, event)
+            )
 
         buf = sock_in.recv(2048)
 
