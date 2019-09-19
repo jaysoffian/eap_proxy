@@ -674,18 +674,17 @@ class EAPProxy(object):
         if ipaddr:
             log.debug("%s: %s", if_vlan, ipaddr)
             if args.ping_gateway:
-                return self.ping_wan_gateway()
+                return self.ping_wan_gateway(if_vlan)
             if args.ping_ip:
                 return self.ping_ipaddr(args.ping_ip)
             return True
         log.debug("%s: no IP address", if_vlan)
         return False
 
-    def ping_wan_gateway(self):
-        if_wan = self.args.if_wan
-        ipaddr = getifgateway(if_wan)
+    def ping_wan_gateway(self, if_vlan):
+        ipaddr = getifgateway(if_vlan)
         if not ipaddr:
-            self.log.debug("ping: no gateway for %s", if_wan)
+            self.log.debug("ping: no gateway for %s", if_vlan)
             return False
         return self.ping_ipaddr(ipaddr)
 
