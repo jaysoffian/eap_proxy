@@ -407,10 +407,7 @@ def make_logger(use_syslog=False, debug=False):
         handler.setFormatter(formatter)
 
     logger = logging.getLogger("eap_proxy")
-    if debug:
-        logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG if debug else logging.INFO)
     logger.addHandler(handler)
     return logger
 
