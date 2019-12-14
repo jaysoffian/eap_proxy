@@ -478,6 +478,22 @@ class EdgeOS(object):
         return getifhwaddr(ifname)
 
 
+### OpenWrt
+
+
+class OpenWrt(EdgeOS):
+    def restart_dhclient(self, name):
+        self.run("systemctl", "restart", "dnsmasq@%s" % name)
+
+    def setmac(self, ifname, mac):
+        """Set interface `ifname` mac to `mac`, which may be either a packed
+           string or in "aa:bb:cc:dd:ee:ff" format."""
+        if len(mac) == 6:
+            mac = strmac(mac)
+        self.run("/sbin/uci", "set" "network.wan_dev.macaddr=%s" % mac)
+        self.run("/sbin/uci", "commit")
+
+
 ### EAP frame/packet decoding
 # c.f. https://github.com/the-tcpdump-group/tcpdump/blob/master/print-eap.c
 
