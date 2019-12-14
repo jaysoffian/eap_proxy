@@ -415,7 +415,7 @@ def make_logger(use_syslog=False, debug=False):
 ### EdgeOS
 
 
-class EdgeOS(object):
+class EdgeOS():
     def __init__(self, log):
         self.log = log
 
@@ -478,8 +478,21 @@ class EdgeOS(object):
         return getifhwaddr(ifname)
 
 
-### OpenWrt
+### Generic Linux
 
+class LinuxOS(EdgeOS):
+    def setmac(self, ifname, mac):
+        """Set interface `ifname` mac to `mac`, which may be either a packed
+           string or in "aa:bb:cc:dd:ee:ff" format."""
+        if len(mac) == 6:
+            mac = strmac(mac)
+        self.run("ip link set dev %s down" % ifname)
+        self.run("ip link set dev %s address %s" % (ifname, mac))
+        self.run("ip link set dev %s up" % ifname)
+
+
+
+### OpenWrt
 
 class OpenWrt(EdgeOS):
     def restart_dhclient(self, name):
@@ -593,7 +606,7 @@ class EAPPacket(namedtuple("EAPPacket", "code id length data")):
 ### EAP Proxy
 
 
-class EAPProxy(object):
+class EAPProxy():
     _poll_events = {
         select.POLLERR: "POLLERR",
         select.POLLHUP: "POLLHUP",
