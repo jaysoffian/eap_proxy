@@ -56,6 +56,118 @@ set service nat rule 5010 outbound-interface eth0.0
 set service nat rule 5010 protocol all
 set service nat rule 5010 type masquerade
 set system offload ipv4 vlan enable
+set firewall ipv6-name WAN6_IN default-action drop
+set firewall ipv6-name WAN6_IN description 'WAN to internal'
+set firewall ipv6-name WAN6_IN enable-default-log
+set firewall ipv6-name WAN6_IN rule 10 action accept
+set firewall ipv6-name WAN6_IN rule 10 description 'Allow established/related'
+set firewall ipv6-name WAN6_IN rule 10 state established enable
+set firewall ipv6-name WAN6_IN rule 10 state related enable
+set firewall ipv6-name WAN6_IN rule 20 action drop
+set firewall ipv6-name WAN6_IN rule 20 description 'Drop invalid state'
+set firewall ipv6-name WAN6_IN rule 20 log enable
+set firewall ipv6-name WAN6_IN rule 20 state invalid enable
+set firewall ipv6-name WAN6_IN rule 30 action accept
+set firewall ipv6-name WAN6_IN rule 30 description 'Allow ICMPv6 destination-unreachable'
+set firewall ipv6-name WAN6_IN rule 30 icmpv6 type destination-unreachable
+set firewall ipv6-name WAN6_IN rule 30 protocol icmpv6
+set firewall ipv6-name WAN6_IN rule 31 action accept
+set firewall ipv6-name WAN6_IN rule 31 description 'Allow ICMPv6 packet-too-big'
+set firewall ipv6-name WAN6_IN rule 31 icmpv6 type packet-too-big
+set firewall ipv6-name WAN6_IN rule 31 protocol icmpv6
+set firewall ipv6-name WAN6_IN rule 32 action accept
+set firewall ipv6-name WAN6_IN rule 32 description 'Allow ICMPv6 time-exceeded'
+set firewall ipv6-name WAN6_IN rule 32 icmpv6 type time-exceeded
+set firewall ipv6-name WAN6_IN rule 32 protocol icmpv6
+set firewall ipv6-name WAN6_IN rule 33 action accept
+set firewall ipv6-name WAN6_IN rule 33 description 'Allow ICMPv6 parameter-problem'
+set firewall ipv6-name WAN6_IN rule 33 icmpv6 type parameter-problem
+set firewall ipv6-name WAN6_IN rule 33 protocol icmpv6
+set firewall ipv6-name WAN6_IN rule 34 action accept
+set firewall ipv6-name WAN6_IN rule 34 description 'Allow ICMPv6 echo-request'
+set firewall ipv6-name WAN6_IN rule 34 icmpv6 type echo-request
+set firewall ipv6-name WAN6_IN rule 34 limit burst 1
+set firewall ipv6-name WAN6_IN rule 34 limit rate 600/minute
+set firewall ipv6-name WAN6_IN rule 34 protocol icmpv6
+set firewall ipv6-name WAN6_IN rule 35 action accept
+set firewall ipv6-name WAN6_IN rule 35 description 'Allow ICMPv6 echo-reply'
+set firewall ipv6-name WAN6_IN rule 35 icmpv6 type echo-reply
+set firewall ipv6-name WAN6_IN rule 35 limit burst 1
+set firewall ipv6-name WAN6_IN rule 35 limit rate 600/minute
+set firewall ipv6-name WAN6_IN rule 35 protocol icmpv6
+set firewall ipv6-name WAN6_LOCAL default-action drop
+set firewall ipv6-name WAN6_LOCAL description 'WAN to router'
+set firewall ipv6-name WAN6_LOCAL enable-default-log
+set firewall ipv6-name WAN6_LOCAL rule 10 action accept
+set firewall ipv6-name WAN6_LOCAL rule 10 description 'Allow established/related'
+set firewall ipv6-name WAN6_LOCAL rule 10 state established enable
+set firewall ipv6-name WAN6_LOCAL rule 10 state related enable
+set firewall ipv6-name WAN6_LOCAL rule 20 action drop
+set firewall ipv6-name WAN6_LOCAL rule 20 description 'Drop invalid state'
+set firewall ipv6-name WAN6_LOCAL rule 20 state invalid enable
+set firewall ipv6-name WAN6_LOCAL rule 30 action accept
+set firewall ipv6-name WAN6_LOCAL rule 30 description 'Allow ICMPv6 destination-unreachable'
+set firewall ipv6-name WAN6_LOCAL rule 30 icmpv6 type destination-unreachable
+set firewall ipv6-name WAN6_LOCAL rule 30 protocol icmpv6
+set firewall ipv6-name WAN6_LOCAL rule 31 action accept
+set firewall ipv6-name WAN6_LOCAL rule 31 description 'Allow ICMPv6 packet-too-big'
+set firewall ipv6-name WAN6_LOCAL rule 31 icmpv6 type packet-too-big
+set firewall ipv6-name WAN6_LOCAL rule 31 protocol icmpv6
+set firewall ipv6-name WAN6_LOCAL rule 32 action accept
+set firewall ipv6-name WAN6_LOCAL rule 32 description 'Allow ICMPv6 time-exceeded'
+set firewall ipv6-name WAN6_LOCAL rule 32 icmpv6 type time-exceeded
+set firewall ipv6-name WAN6_LOCAL rule 32 protocol icmpv6
+set firewall ipv6-name WAN6_LOCAL rule 33 action accept
+set firewall ipv6-name WAN6_LOCAL rule 33 description 'Allow ICMPv6 parameter-problem'
+set firewall ipv6-name WAN6_LOCAL rule 33 icmpv6 type parameter-problem
+set firewall ipv6-name WAN6_LOCAL rule 33 protocol icmpv6
+set firewall ipv6-name WAN6_LOCAL rule 34 action accept
+set firewall ipv6-name WAN6_LOCAL rule 34 description 'Allow ICMPv6 echo-request'
+set firewall ipv6-name WAN6_LOCAL rule 34 icmpv6 type echo-request
+set firewall ipv6-name WAN6_LOCAL rule 34 limit burst 5
+set firewall ipv6-name WAN6_LOCAL rule 34 limit rate 5/second
+set firewall ipv6-name WAN6_LOCAL rule 34 protocol icmpv6
+set firewall ipv6-name WAN6_LOCAL rule 35 action accept
+set firewall ipv6-name WAN6_LOCAL rule 35 description 'Allow ICMPv6 echo-reply'
+set firewall ipv6-name WAN6_LOCAL rule 35 icmpv6 type echo-reply
+set firewall ipv6-name WAN6_LOCAL rule 35 limit burst 5
+set firewall ipv6-name WAN6_LOCAL rule 35 limit rate 5/second
+set firewall ipv6-name WAN6_LOCAL rule 35 protocol icmpv6
+set firewall ipv6-name WAN6_LOCAL rule 36 action accept
+set firewall ipv6-name WAN6_LOCAL rule 36 description 'Allow ICMPv6 Router Advertisement'
+set firewall ipv6-name WAN6_LOCAL rule 36 icmpv6 type router-advertisement
+set firewall ipv6-name WAN6_LOCAL rule 36 protocol icmpv6
+set firewall ipv6-name WAN6_LOCAL rule 37 action accept
+set firewall ipv6-name WAN6_LOCAL rule 37 description 'Allow ICMPv6 Neighbor Solicitation'
+set firewall ipv6-name WAN6_LOCAL rule 37 icmpv6 type neighbor-solicitation
+set firewall ipv6-name WAN6_LOCAL rule 37 protocol icmpv6
+set firewall ipv6-name WAN6_LOCAL rule 38 action accept
+set firewall ipv6-name WAN6_LOCAL rule 38 description 'Allow ICMPv6 Neighbor Advertisement'
+set firewall ipv6-name WAN6_LOCAL rule 38 icmpv6 type neighbor-advertisement
+set firewall ipv6-name WAN6_LOCAL rule 38 protocol icmpv6
+set firewall ipv6-name WAN6_LOCAL rule 50 action accept
+set firewall ipv6-name WAN6_LOCAL rule 50 description 'Allow DHCPv6'
+set firewall ipv6-name WAN6_LOCAL rule 50 destination port 546
+set firewall ipv6-name WAN6_LOCAL rule 50 protocol udp
+set firewall ipv6-name WAN6_LOCAL rule 50 source port 547
+set firewall ipv6-receive-redirects disable
+set firewall ipv6-src-route disable
+set service dhcp-server use-dnsmasq enable
+set service dns forwarding options enable-ra
+set service dns forwarding options 'dhcp-range=::1,constructor:eth1,ra-names,86400'
+set interfaces ethernet eth0 vif 0 dhcpv6-pd duid 'xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx'
+set interfaces ethernet eth0 vif 0 dhcpv6-pd pd 1 interface eth1 host-address '::1'
+set interfaces ethernet eth0 vif 0 dhcpv6-pd pd 1 interface eth1 no-dns
+set interfaces ethernet eth0 vif 0 dhcpv6-pd pd 1 interface eth1 prefix-id ':0'
+set interfaces ethernet eth0 vif 0 dhcpv6-pd pd 1 interface eth1 service slaac
+set interfaces ethernet eth0 vif 0 dhcpv6-pd pd 1 prefix-length 60
+set interfaces ethernet eth0 vif 0 dhcpv6-pd prefix-only
+set interfaces ethernet eth0 vif 0 dhcpv6-pd rapid-commit disable
+set interfaces ethernet eth0 vif 0 firewall in ipv6-name WAN6_IN
+set interfaces ethernet eth0 vif 0 firewall local ipv6-name WAN6_LOCAL
+set interfaces ethernet eth0 vif 0 ipv6 dup-addr-detect-transmits 1
+set system offload ipv6 forwarding enable
+set system offload ipv6 vlan enable
 ```
 
 Update the MAC address for `eth0 vif 0` to that of your AT&T router, or let `eap_proxy` do it with the `--set-mac` option. I prefer to set it in my router config.
@@ -63,6 +175,10 @@ Update the MAC address for `eth0 vif 0` to that of your AT&T router, or let `eap
 Note the `set system offload ipv4 vlan enable` command or you'll have horrible routing performance.
 
 Don't forget to update the rest of your config to reference `eth0.0` as your WAN interface as needed.
+
+For IPv6, be sure to change the duid value to the duid of your AT&T router, or wait ~2 weeks for the lease to expire to get a fresh lease. You can sniff the traffic from your AT&T router to find the duid, or generate one with a script like gen-duid.sh from pfatt on github.
+
+For firewall rules, note that the setup wizard creates rules named WANv6_* if you check the box to enable IPv6, whereas the above rules are WAN6_*.
 
 I previously had IPv6 working via 6rd before my area was on native dual-stack. Here's the relevant 6rd configuration from that time:
 
