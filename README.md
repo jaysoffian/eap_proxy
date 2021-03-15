@@ -22,6 +22,12 @@ Inspired by [`1x_prox`](http://www.dslreports.com/forum/r30693618-) posted to th
 
 Please see <https://blog.taylorsmith.xyz/att-uverse-modem-bypass-unifi-usg/>
 
+## Instructions (UXG-Pro-US-BETA)
+
+Update to latest beta firmware, as factory shipped beta does not include the Docker/Podman runtime.
+Follow instructions above for USG, but attach the AT&T router to the LAN RJ45 port, and the AT&T ONT to the WAN RJ45 port, then boot with these arguments to the docker startup command:
+`--ping-gateway --ignore-when-wan-up --ignore-start --ignore-logoff --set-mac eth0 eth1`
+
 ## Instruction (Generic Linux)
 
 Sorry, you're on your own for now, but see [#21](https://github.com/jaysoffian/eap_proxy/issues/21) for hints.
