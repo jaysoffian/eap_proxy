@@ -24,5 +24,9 @@ if test -f /var/run/eap_proxy.pid; then
   kill $(head -1 /var/run/eap_proxy.pid) 2>/dev/null
 fi
 
+# Required for USG devices to survive a reboot
+# Replace ab:cd:ef:01:23:45 with the MAC address of the AT&T Router Gateway (RG)
+/opt/vyatta/sbin/vyatta-interfaces.pl --dev eth0.0 --set-mac ab:cd:ef:01:23:45
+
 /usr/bin/python /config/scripts/eap_proxy.py \
     "$IF_WAN" "$IF_ROUTER" "${CONFIG_OPTIONS[@]}" "${DAEMON_OPTIONS[@]}" &
