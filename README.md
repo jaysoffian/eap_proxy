@@ -152,3 +152,18 @@ debugging:
   --debug-packets       print packets in hex format to assist with debugging;
                         implies --debug
 ```
+## Troubleshooting 
+
+### USG
+
+#### Error message "IOError: [eth2] unexpected poll event: 8"
+
+The USG device by default has the secondary WAN port (eth2) enabled. After a hard reset of the device this will be the case as well. The above error message indicates that this interface is disabled (administrative down state). You can enable the interface via the CLI:
+
+```
+configure
+delete interfaces ethernet eth0 disable
+commit
+save
+exit
+```
