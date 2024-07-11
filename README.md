@@ -4,9 +4,12 @@ Proxy EAP packets between network interfaces. Compatible with:
 
 - Ubiquiti Networks EdgeRouter™ products
 - UniFi® Security Gateway
+- Unifi® Dream Machine (Unifi OS 3.x+) 
 - Generic Linux systems
 
 Inspired by [`1x_prox`](http://www.dslreports.com/forum/r30693618-) posted to the “[AT&T Residential Gateway Bypass - True bridge mode!](https://www.dslreports.com/forum/r29903721-AT-T-Residential-Gateway-Bypass-True-bridge-mode)” discussion in the “AT&T U-verse” DSLReports forum.
+
+This also works with AU Japan 802.1x (AU "White Box").
 
 ## Instructions (EdgeRouter)
 
@@ -25,6 +28,70 @@ Please see <https://blog.taylorsmith.xyz/att-uverse-modem-bypass-unifi-usg/>
 ## Instruction (Generic Linux)
 
 Sorry, you're on your own for now, but see [#21](https://github.com/jaysoffian/eap_proxy/issues/21) for hints.
+
+## Instructions Unifi OS Devices (UDM Pro & Variants, NOT UXG-Pro) 
+
+Notes: 
+1. This will require using one of your SFP+ Ports, and an SFP+ to Ethernet interface.
+2. This may or may not survive OS upgrades, it will survive Unifi App Upgrades.
+
+eth8 = Ethernet Uplink Port (Separated "WAN" port on the UDM)
+
+eth9 = Top SFP+ Port
+
+eth10 = Bottom SFP+ Port
+
+
+Instructions:   
+1. Enable SSH on your UDM.
+2. Clone the MAC Address from the provided router to the WAN port on the UDM (Settings -> Internet -> WAN 1/2 -> MAC Address Clone).
+3. Disconnect the UDM from the provided router & the provided router from the ONT.
+4. Copy an archive of the repo to the UDM and extract it to /etc/eap_proxy/ (you will need to create this directory).
+5. Test the setup:
+
+   ```python /etc/eap_proxy/eap_proxy.py --ignore-when-wan-up --ignore-logoff --ping-gateway eth8 eth9``` (or eth10).
+
+   Connect eth8 to the ONT, connect the router to eth9/eth10.
+   
+After a few minutes, you should see an output similar to below:
+
+```
+Jul 08 19:52:12 UDMPRO python[1520690]: [2024-07-08 19:52:12,793]: starting proxy_loop
+Jul 08 20:32:42 UDMPRO python[1520690]: [2024-07-08 20:32:42,135]: eth9: 08:33:ed:XX:XX:XX > 01:80:c2:XX:XX:XX, EAPOL start (1) v1, len 0 > eth8
+Jul 08 20:32:42 UDMPRO python[1520690]: [2024-07-08 20:32:42,150]: eth8: 00:25:5c:XX:XX:XX > 08:33:ed:XX:XX:XX, EAP packet (0) v1, len 5, Request (1) id 6, len 5 [1] > eth9
+Jul 08 20:32:42 UDMPRO python[1520690]: [2024-07-08 20:32:42,156]: eth9: 08:33:ed:XX:XX:XX > 01:80:c2:XX:XX:XX, EAP packet (0) v1, len 17, Response (2) id 6, len 17 [13] > eth8
+Jul 08 20:32:42 UDMPRO python[1520690]: [2024-07-08 20:32:42,171]: eth8: 00:25:5c:XX:XX:XX > 08:33:ed:XX:XX:XX, EAP packet (0) v1, len 28, Request (1) id 7, len 28 [24] > eth9
+Jul 08 20:32:42 UDMPRO python[1520690]: [2024-07-08 20:32:42,177]: eth9: 08:33:ed:XX:XX:XX > 01:80:c2:XX:XX:XX, EAP packet (0) v1, len 34, Response (2) id 7, len 34 [30] > eth8
+Jul 08 20:32:42 UDMPRO python[1520690]: [2024-07-08 20:32:42,211]: eth8: 00:25:5c:XX:XX:XX > 08:33:ed:XX:XX:XX, EAP packet (0) v1, len 4, Success (3) id 8, len 4 [0] > eth9
+```
+
+ 6. Once you confirm the UDM receives an IP and you can reach the internet, setup a service file so that systemd can manage the script.
+ 7. Using a text editor, create the file ```/etc/systemd/system/eap_proxy.service```
+
+    ```
+    [Unit]
+    Description=EAP_PROXY
+    After=network.target
+    StartLimitIntervalSec=0
+
+    [Service]
+    WorkingDirectory=/etc/eap_proxy
+    Type=simple
+    Restart=always
+    RestartSec=1
+    ExecStart=/usr/bin/python /etc/eap_proxy/eap_proxy.py --ignore-when-wan-up --ignore-logoff --ping-gateway eth8 eth9
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+ 8. Run the following commands to enable & start the service.
+
+    ```systemctl enable eap_proxy.service```
+    
+    ```systemctl start eap_proxy```
+    
+ 10. Unplug & replug the cable from the ONT to the UDM.
 
 ## EdgeRouter Sample Configuration
 
