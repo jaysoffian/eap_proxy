@@ -1,3 +1,9 @@
+# End of Life
+
+I originally developed `eap_proxy` in 2017 for use on an EdgeRouter Lite running EdgeOS v1.9.1.1 where it worked well for me for many years. In 2024, I switched to a Dream Machine Pro using [wpasupplicant to bypass the AT&T router](https://old.reddit.com/r/Ubiquiti/comments/18rc0ag/att_modem_bypass_and_unifios_32x_guide/). 
+
+Since I no longer use the proxy, nor have anyway to test it, it is now end of life.
+
 # eap_proxy
 
 Proxy EAP packets between network interfaces. Compatible with:
@@ -160,8 +166,6 @@ python -c 'import sys;a,b,c,d=map(int,sys.argv[1].split("."));print "2602:30%x:%
 If you aren't already using `dnsmasq` for DHCP, you might want to use `radvd` instead. [See the example here](https://help.ubnt.com/hc/en-us/articles/204960044-EdgeRouter-Enable-IPv6-support-via-CLI) (it's the `router-advert` section).
 
 For configuring IPv6 in areas that are on native dual-stack, please see the discussion in https://github.com/jaysoffian/eap_proxy/issues/3. FWIW, though I was able to get IPv6 to work correctly, I eventually disabled it for a couple reasons. First, AT&T's IPv6 network was flakey for me, and sometimes sites would randomly become unreachable. Second, even when IPv6 was working correctly, the latency for me to many sites was always significantly higher than over IPv4. YMMV.
-
-Good luck. This proxy continues to work well for me. I originally developed it for use on an EdgeRouter Lite running EdgeOS v1.9.1.1. As of Sep 2018, I'm using it on an EdgeRouter 4 running EdgeOS v1.10.5. I know that it has also been used successfully on the ER-X and USG.
 
 ## Usage
 
